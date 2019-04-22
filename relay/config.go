@@ -25,6 +25,7 @@ func GetDefaultConfig() *Config {
 
 	config = &Config{
 		Dir: "",
+		UdpAddr:":19001",
 	}
 	return config
 }

@@ -27,15 +27,22 @@ import "net"
 
  */
 type Participant struct {
-	Id  []byte  //8 byte participant account id
+	Id  uint64  //8 byte participant account id
 	UdpAddr *net.UDPAddr  //当前udp地址
 	TcpConn *net.TCPConn  //当前tcp连接
 }
 
 type Session struct {
 	Id       []byte
-	IdShort  []byte
+	IdShort  uint64
 	Type     int
-	Participants map[string]*Participant
+	Participants map[uint64]*Participant
 }
 
+func NewSession(id uint64) *Session {
+	session := &Session{
+		IdShort: id,
+	}
+
+	return session
+}

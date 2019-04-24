@@ -10,3 +10,18 @@ package relay
 type TcpServer struct {
 
 }
+
+func NewTcpServer(config *Config, subscriber chan *ReceivedPacket) *TcpServer {
+	server := &TcpServer{
+	}
+
+	return server
+}
+
+func (t *TcpServer) Start() {
+
+}
+
+func (t *TcpServer) Stop() {
+
+}

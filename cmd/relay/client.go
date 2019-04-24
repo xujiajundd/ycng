@@ -35,6 +35,7 @@ func init() {
 	client.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "saddr",
+			Value: "127.0.0.1:19001",
 			Usage: "server address",
 		},
 	}
@@ -50,9 +51,7 @@ func main() {
 }
 
 func Client(ctx *cli.Context) error {
-	saddr := ctx.String("saddr")
-
-	saddr = "127.0.0.1:19001"
+	saddr := ctx.GlobalString("saddr")
 
 	udpAddr, err := net.ResolveUDPAddr("udp4", saddr)
 	if err != nil {

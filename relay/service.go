@@ -14,57 +14,65 @@ import (
 	"syscall"
 
 	"github.com/xujiajundd/ycng/utils/logging"
+	"time"
 )
 
 type Service struct {
 	config          *Config
 	sessions        map[uint64]*Session
+	users           map[uint64]*User
+	storage         *Storage
 	udp_server      *UdpServer
 	tcp_server      *TcpServer
-	packetReceiveCh chan *ReceivedPacket
+	packetReceiveCh chan *ReceivedPacket //通过udp或者tcp进来的包
 
 	isRunning bool
 	lock      sync.RWMutex
 	stop      chan struct{}
 	wg        sync.WaitGroup
+	ticker    *time.Ticker
 }
 
 func NewService(config *Config) *Service {
 	service := &Service{
 		config:          config,
 		sessions:        make(map[uint64]*Session),
+		users:           make(map[uint64]*User),
+		storage:         NewStorage(),
 		packetReceiveCh: make(chan *ReceivedPacket, 10),
 		isRunning:       false,
 		stop:            make(chan struct{}),
+		ticker:          time.NewTicker(1 * time.Second),
 	}
 
 	service.udp_server = NewUdpServer(config, service.packetReceiveCh)
+	service.tcp_server = NewTcpServer(config, service.packetReceiveCh)
 
 	return service
 }
 
-func (s *Service) Start() (err error) {
+func (s *Service) Start() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if !s.isRunning {
 		s.udp_server.Start()
+		s.tcp_server.Start()
 		s.isRunning = true
 
 		s.wg.Add(1)
 		go s.loop()
 	}
-	return nil
 }
 
-func (s *Service) Stop() (err error) {
+func (s *Service) Stop() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	if s.isRunning {
 		s.udp_server.Stop()
+		s.tcp_server.Stop()
 		s.isRunning = false
 	}
 	close(s.stop)
-	return nil
 }
 
 func (s *Service) WaitForShutdown() {
@@ -73,8 +81,7 @@ func (s *Service) WaitForShutdown() {
 		signal.Notify(sigc, syscall.SIGINT, syscall.SIGTERM)
 		defer signal.Stop(sigc)
 		<-sigc
-		if err := s.Stop(); err != nil {
-		}
+		s.Stop()
 	}()
 
 	s.wg.Wait()
@@ -82,7 +89,6 @@ func (s *Service) WaitForShutdown() {
 }
 
 func (s *Service) loop() {
-
 	defer s.wg.Done()
 
 	for {
@@ -91,6 +97,8 @@ func (s *Service) loop() {
 			return
 		case packet := <-s.packetReceiveCh:
 			s.handlePacket(packet)
+		case time := <-s.ticker.C:
+           s.handleTicker(time)
 		}
 	}
 }
@@ -109,7 +117,7 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 	case UdpMessageTypeTurnReg:
 		s.handleMessageTurnReg(msg, packet)
 
-	case UdpMessageTypeTurnRegReceived:
+	case UdpMessageTypeTurnRegReceived: //只有客户端会收到这个
 
 	case UdpMessageTypeAudioStream:
 		s.handleMessageAudioStream(msg)
@@ -175,5 +183,10 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message) {
 }
 
 func (s *Service) handleMessageVideoNack(msg *Message) {
+
+}
+
+//清理过期的session和user
+func (s *Service) handleTicker(time time.Time) {
 
 }

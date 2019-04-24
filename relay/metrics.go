@@ -7,10 +7,8 @@
 
 package relay
 
-type Storage struct {
+type Metrics struct {
 
 }
 
-func NewStorage() *Storage {
-	return nil
-}
+

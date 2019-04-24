@@ -7,7 +7,11 @@
 
 package relay
 
-import "net"
+import (
+	"net"
+	"errors"
+	"fmt"
+)
 
 /*
 1. Relay Server 管理一组Sessions
@@ -25,17 +29,25 @@ import "net"
 
 4. UDP，也可能UDP over TCP
 
- */
+*/
+
+const (
+	SessionTypeRealtimeCall         = 0
+	SessionTypeRealtimeFileTransfer = 1
+	SessionTypeAsyncFileTransfer    = 2
+)
+
 type Participant struct {
-	Id  uint64  //8 byte participant account id
-	UdpAddr *net.UDPAddr  //当前udp地址
-	TcpConn *net.TCPConn  //当前tcp连接
+	Id      uint64       //8 byte participant account id
+	UdpAddr *net.UDPAddr //当前udp地址
+	TcpConn *net.TCPConn //当前tcp连接
+	Metrics *Metrics     //针对每个participants的in/out metrics
 }
 
 type Session struct {
-	Id       []byte
-	IdShort  uint64
-	Type     int
+	Id           []byte
+	IdShort      uint64
+	Type         int
 	Participants map[uint64]*Participant
 }
 
@@ -45,4 +57,37 @@ func NewSession(id uint64) *Session {
 	}
 
 	return session
+}
+
+//待定。。。
+type Sessions struct {
+	sessions map[uint64][]*Session
+}
+
+func NewSessions() *Sessions {
+	s := &Sessions{
+		sessions: make(map[uint64][]*Session),
+	}
+	return s
+}
+
+func (s *Sessions) AddSession(session *Session) {
+
+}
+
+func (s *Sessions) FindSession(sid uint64, from uint64) (*Session) {
+	ss := s.sessions[sid]
+	if ss == nil || len(ss) == 0 {
+		return nil
+	}
+	if len(ss) == 1 {
+		return ss[0]
+	} else {
+		for _, s := range ss {
+			if s.Participants[from] != nil {
+				return s
+			}
+		}
+		return nil
+	}
 }

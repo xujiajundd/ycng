@@ -132,10 +132,18 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 		s.handleMessageVideoNack(msg)
 
 	case UdpMessageTypeVideoAskForIFrame:
+		s.handleMessageVideoASkForIFrame(msg)
+
 	case UdpMessageTypeVideoOnlyIFrame:
+
 	case UdpMessageTypeVideoOnlyAudio:
-	case UdpMessageTypeClientReg:
-	case UdpMessageTypeClientSignal:
+
+	case UdpMessageTypeUserReg:
+		s.handleMessageUserReg(msg, packet)
+
+	case UdpMessageTypeUserSignal:
+		s.handleMessageUserSignal(msg)
+
 	}
 }
 
@@ -157,34 +165,110 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 	//当前用户注册到session
 	participant := &Participant{Id: msg.from, UdpAddr: packet.fromUdpAddr, TcpConn: nil}
 	session.Participants[participant.Id] = participant
+
+	//回复
+	msg.msgType = UdpMessageTypeTurnRegReceived
+	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), participant.UdpAddr)
 }
 
 func (s *Service) handleMessageAudioStream(msg *Message) {
-	logging.Logger.Info("received audio from ", msg.from, " to ", msg.to)
+	//logging.Logger.Info("received audio from ", msg.from, " to ", msg.to)
 
 	session := s.sessions[msg.to]
 	if session != nil {
 		for _, p := range session.Participants {
-			if p.Id != msg.from {
+			if p.Id != msg.from || p.Id == 0 {
 				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 			}
 		}
 	} else {
-		logging.Logger.Info("session not existed for audio ", msg.to)
+		logging.Logger.Info("session not existed", msg.to)
 	}
 }
 
 func (s *Service) handleMessageVideoStream(msg *Message) {
+	//logging.Logger.Info("received video from ", msg.from, " to ", msg.to)
 
+	session := s.sessions[msg.to]
+	if session != nil {
+		for _, p := range session.Participants {
+			if p.Id != msg.from || p.Id == 0 {
+				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+			}
+		}
+	} else {
+		logging.Logger.Info("session not existed", msg.to)
+	}
 }
 
 func (s *Service) handleMessageVideoStreamIFrame(msg *Message) {
+	logging.Logger.Info("received video iframe from ", msg.from, " to ", msg.to)
 
+	session := s.sessions[msg.to]
+	if session != nil {
+		for _, p := range session.Participants {
+			if p.Id != msg.from || p.Id == 0 {
+				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+			}
+		}
+	} else {
+		logging.Logger.Info("session not existed", msg.to)
+	}
+}
+
+func (s *Service) handleMessageVideoASkForIFrame(msg *Message) {
+	logging.Logger.Info("received ask for iframe from ", msg.from, " to ", msg.to)
+
+	session := s.sessions[msg.to]
+	if session != nil {
+		for _, p := range session.Participants {
+			if p.Id != msg.from || p.Id == 0 {
+				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+			}
+		}
+	} else {
+		logging.Logger.Info("session not existed ", msg.to)
+	}
 }
 
 func (s *Service) handleMessageVideoNack(msg *Message) {
+	logging.Logger.Info("received nack from ", msg.from, " to ", msg.to)
 
+	session := s.sessions[msg.to]
+	if session != nil {
+		for _, p := range session.Participants {
+			if p.Id != msg.from || p.Id == 0 {
+				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+			}
+		}
+	} else {
+		logging.Logger.Info("session not existed ", msg.to)
+	}
 }
+
+func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
+	logging.Logger.Info("received user reg from ", msg.from, " to ", msg.to)
+
+    user := s.users[msg.from]
+    if user == nil {
+    	user := NewUser(msg.from)
+    	s.users[msg.from] = user
+	}
+
+	user.UdpAddr = packet.fromUdpAddr
+	user.LastActiveTime = time.Now()
+}
+
+func (s *Service) handleMessageUserSignal(msg *Message) {
+	logging.Logger.Info("received user signal from ", msg.from, " to ", msg.to)
+
+	user := s.users[msg.to]
+
+	if user != nil {
+		s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
+	}
+}
+
 
 //清理过期的session和user
 func (s *Service) handleTicker(time time.Time) {

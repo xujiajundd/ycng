@@ -32,37 +32,55 @@ const (
 	UdpMessageTypeVideoOnlyIFrame   = 34 //视频只收i帧
 	UdpMessageTypeVideoOnlyAudio    = 35 //视频只收音频
 
-	UdpMessageTypeClientReg    = 100 //注册一个客户端
-	UdpMessageTypeClientSignal = 101 //通过UDP来转发的信令，信令统一在push中定义
+	UdpMessageTypeUserReg    = 200 //注册一个客户端
+	UdpMessageTypeUserSignal = 201 //通过UDP来转发的信令，信令统一在push中定义
+)
+
+const (
+	UdpMessageFlagExtra = 1 << 0
+	UdpMessageFlagDest  = 1 << 1
 )
 
 type Message struct {
-	versionAndFlags uint16
-	msgType         uint8
-	from            uint64
-	to              uint64
-	payloadLen      uint16
-	payload         []byte
-	extraLen        uint16
-	extra           []byte
+	tseq    int16
+	tid     byte
+	version uint16
+	flags   uint16
+	msgType uint8
+	from    uint64
+	to      uint64
+	dest    uint64
+	payload []byte
+	extra []byte
 }
 
 type ReceivedPacket struct {
 	fromUdpAddr *net.UDPAddr
 	fromTcpConn *net.TCPConn
 	body        []byte
+	time        int64
 }
 
-func NewMessage(vf uint16, msgType uint8, from uint64, to uint64, plen uint16, payload []byte, elen uint16, extra []byte) *Message {
+func NewMessage(msgType uint8, from uint64, to uint64, dest uint64, payload []byte, extra []byte) *Message {
 	msg := &Message{
-		versionAndFlags: vf,
-		msgType:         msgType,
-		from:            from,
-		to:              to,
-		payloadLen:      plen,
-		payload:         payload,
-		extraLen:        elen,
-		extra:           extra,
+		tseq:    0,
+		tid:     0,
+		version: 1,
+		flags:   0,
+		msgType: msgType,
+		from:    from,
+		to:      to,
+		dest:    dest,
+		payload: payload,
+		extra:   extra,
+	}
+
+	if dest != 0 {
+		msg.SetFlag(UdpMessageFlagDest)
+	}
+
+	if extra != nil {
+		msg.SetFlag(UdpMessageFlagExtra)
 	}
 
 	return msg
@@ -91,12 +109,20 @@ func (m *Message) Unmarshal(data []byte) error {
 	len := len(data)
 	p := 0
 
-	if len < 3 {
-		return errors.New("incorrect packet, len < 3")
+	if len < 24 {
+		return errors.New("incorrect packet, len < 24")
 	}
-
-	m.versionAndFlags = binary.BigEndian.Uint16(data[p : p+2])
+	m.tseq = int16(binary.BigEndian.Uint16(data[p : p+2]))
 	p += 2
+
+	m.tid = data[p]
+	p += 1
+
+	versionAndFlags := binary.BigEndian.Uint16(data[p : p+2])
+	p += 2
+	m.version = (versionAndFlags & 0xf000) >> 12
+	m.flags = versionAndFlags & 0xfff
+
 	m.msgType = data[p]
 	p += 1
 
@@ -108,32 +134,59 @@ func (m *Message) Unmarshal(data []byte) error {
 		m.to = binary.BigEndian.Uint64(data[p : p+8])
 		p += 8
 	}
+
+	if m.HasFlag(UdpMessageFlagDest) {
+		if len >= p+8 {
+			m.dest = binary.BigEndian.Uint64(data[p : p+8])
+			p += 8
+		}
+	}
+
+	var payloadLen uint16
 	if len >= p+2 {
-		m.payloadLen = binary.BigEndian.Uint16(data[p : p+2])
+		payloadLen = binary.BigEndian.Uint16(data[p : p+2])
 		p += 2
 	}
-	if len >= p+int(m.payloadLen) {
+
+	if len >= p+int(payloadLen) {
 		//TODO; 这个地方是copy呢？还是直接这样呢?
-		m.payload = data[p : p+int(m.payloadLen)]
-		p += int(m.payloadLen)
+		m.payload = data[p : p+int(payloadLen)]
+		p += int(payloadLen)
 	}
-	if len >= p+2 {
-		m.extraLen = binary.BigEndian.Uint16(data[p : p+2])
-		p += 2
-	}
-	if len >= p+int(m.extraLen) {
-		m.extra = data[p : p+int(m.extraLen)]
-		p += int(m.extraLen)
+
+	if m.HasFlag(UdpMessageFlagExtra) {
+		var extraLen uint16
+		if len >= p+2 {
+			extraLen = binary.BigEndian.Uint16(data[p : p+2])
+			p += 2
+		}
+		if len >= p+int(extraLen) {
+			m.extra = data[p : p+int(extraLen)]
+			p += int(extraLen)
+		}
 	}
 
 	return nil
 }
 
 func (m *Message) Marshal() []byte {
-	messageLength := 2 + 1 + 8 + 8 + 2 + 2 + len(m.payload) + len(m.extra)
+	messageLength := 2 + 1 + 2 + 1 + 8 + 8 + 2 + len(m.payload)
+	if m.HasFlag(UdpMessageFlagDest) {
+		messageLength += 8
+	}
+
+	if m.HasFlag(UdpMessageFlagExtra) {
+		messageLength += 2 + len(m.extra)
+	}
+
 	buf := make([]byte, messageLength)
 	p := 0
-	binary.BigEndian.PutUint16(buf[p:p+2], m.versionAndFlags)
+	binary.BigEndian.PutUint16(buf[p:p+2], uint16(m.tseq))
+	p += 2
+	buf[p] = m.tid
+	p += 1
+	versionAndFlags := (m.flags & 0x0fff) | (m.version&0x000f)<<12
+	binary.BigEndian.PutUint16(buf[p:p+2], uint16(versionAndFlags))
 	p += 2
 	buf[p] = m.msgType
 	p += 1
@@ -141,15 +194,30 @@ func (m *Message) Marshal() []byte {
 	p += 8
 	binary.BigEndian.PutUint64(buf[p:p+8], m.to)
 	p += 8
-	binary.BigEndian.PutUint16(buf[p:p+2], m.payloadLen)
+	if m.HasFlag(UdpMessageFlagDest) {
+		binary.BigEndian.PutUint64(buf[p:p+8], m.dest)
+		p += 8
+	}
+	binary.BigEndian.PutUint16(buf[p:p+2], uint16(len(m.payload)))
 	p += 2
-	copy(buf[p:p+int(m.payloadLen)], m.payload)
-	p += int(m.payloadLen)
-	binary.BigEndian.PutUint16(buf[p:p+2], m.extraLen)
-	p += 2
-	copy(buf[p:p+int(m.extraLen)], m.extra)
+	copy(buf[p:p+int(len(m.payload))], m.payload)
+	p += int(len(m.payload))
+
+	if m.HasFlag(UdpMessageFlagExtra) {
+		binary.BigEndian.PutUint16(buf[p:p+2], uint16(len(m.extra)))
+		p += 2
+		copy(buf[p:p+int(len(m.extra))], m.extra)
+	}
 
 	return buf
+}
+
+func (m *Message) SetFlag(flag uint16) {
+	m.flags = m.flags | flag
+}
+
+func (m *Message) HasFlag(flag uint16) bool {
+	return (m.flags & flag) == flag
 }
 
 func (m *Message) Payload() []byte {

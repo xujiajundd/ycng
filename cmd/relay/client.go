@@ -94,8 +94,8 @@ func runCommand(commandStr string, conn *net.UDPConn) error {
 		from, _ := strconv.ParseUint(cs[1], 10, 64)
 		to, _ := strconv.ParseUint(cs[2], 10, 64)
 
-		msg := relay.NewMessage(1, relay.UdpMessageTypeTurnReg,
-			from, to, 0, nil, 0, nil)
+		msg := relay.NewMessage(relay.UdpMessageTypeTurnReg,
+			from, to, 0, nil,nil)
 		data := msg.ObfuscatedDataOfMessage()
 
 		_, err := conn.Write(data)
@@ -108,8 +108,8 @@ func runCommand(commandStr string, conn *net.UDPConn) error {
 		to, _ := strconv.ParseUint(cs[2], 10, 64)
 		payload := []byte(cs[3])
 
-		msg := relay.NewMessage(1, relay.UdpMessageTypeAudioStream,
-			from, to, uint16(len(payload)), payload, 0, nil)
+		msg := relay.NewMessage(relay.UdpMessageTypeAudioStream,
+			from, to, 0, payload, nil)
 		data := msg.ObfuscatedDataOfMessage()
 
 		_, err := conn.Write(data)

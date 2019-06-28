@@ -11,6 +11,7 @@ import (
 	"net"
 
 	"github.com/xujiajundd/ycng/utils/logging"
+	"time"
 )
 
 type UdpServer struct {
@@ -54,9 +55,12 @@ func (u *UdpServer) handleClient() {
 			continue
 		}
 
+		data := make([]byte, size)
+		copy(data, buf[0:size])
 		packet := &ReceivedPacket{
-			body:        buf[0:size],
+			body:        data,
 			fromUdpAddr: addr,
+			time:        time.Now().UnixNano(),
 		}
 
 		u.subscriberCh <- packet

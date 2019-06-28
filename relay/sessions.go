@@ -9,8 +9,6 @@ package relay
 
 import (
 	"net"
-	"errors"
-	"fmt"
 )
 
 /*

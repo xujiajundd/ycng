@@ -28,7 +28,7 @@ func ObfuscateData(data []byte) []byte {
 
 	buf := make([]byte, l + 2)
 	binary.BigEndian.PutUint16(buf[0:2], uint16(r))
-	for i:=0; i<len(data); i++ {
+	for i:=0; i<l; i++ {
 		buf[i+2] = obfDict[(i+r)%len(obfDict)] ^ data[i]
 	}
 

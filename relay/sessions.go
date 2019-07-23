@@ -9,6 +9,7 @@ package relay
 
 import (
 	"net"
+	"time"
 )
 
 /*
@@ -36,10 +37,13 @@ const (
 )
 
 type Participant struct {
-	Id      uint64       //8 byte participant account id
-	UdpAddr *net.UDPAddr //当前udp地址
-	TcpConn *net.TCPConn //当前tcp连接
-	Metrics *Metrics     //针对每个participants的in/out metrics
+	Id             uint64       //8 byte participant account id
+	UdpAddr        *net.UDPAddr //当前udp地址
+	TcpConn        *net.TCPConn //当前tcp连接
+	LastActiveTime time.Time
+	Metrics        *Metrics //针对每个participants的in/out metrics
+	PendingMsg     *Message
+	Tseq           int16
 }
 
 type Session struct {
@@ -73,7 +77,7 @@ func (s *Sessions) AddSession(session *Session) {
 
 }
 
-func (s *Sessions) FindSession(sid uint64, from uint64) (*Session) {
+func (s *Sessions) FindSession(sid uint64, from uint64) *Session {
 	ss := s.sessions[sid]
 	if ss == nil || len(ss) == 0 {
 		return nil

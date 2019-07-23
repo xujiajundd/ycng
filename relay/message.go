@@ -24,6 +24,7 @@ const (
 	UdpMessageTypeNoop              = 0  //NOOP
 	UdpMessageTypeTurnReg           = 1  //客户端注册一个session的请求
 	UdpMessageTypeTurnRegReceived   = 2  //服务器返回请求收到
+	UdpMessageTypeTurnUnReg         = 3  //客户端注销session注册
 	UdpMessageTypeAudioStream       = 20 //音频包
 	UdpMessageTypeVideoStream       = 30 //视频包
 	UdpMessageTypeVideoStreamIFrame = 31 //视频i帧
@@ -42,16 +43,17 @@ const (
 )
 
 type Message struct {
-	tseq    int16
-	tid     byte
-	version uint16
-	flags   uint16
-	msgType uint8
-	from    uint64
-	to      uint64
-	dest    uint64
-	payload []byte
-	extra []byte
+	tseq      int16
+	tid       byte
+	timestamp uint16
+	version   uint16
+	flags     uint16
+	msgType   uint8
+	from      uint64
+	to        uint64
+	dest      uint64
+	payload   []byte
+	extra     []byte
 }
 
 type ReceivedPacket struct {
@@ -63,16 +65,17 @@ type ReceivedPacket struct {
 
 func NewMessage(msgType uint8, from uint64, to uint64, dest uint64, payload []byte, extra []byte) *Message {
 	msg := &Message{
-		tseq:    0,
-		tid:     0,
-		version: 1,
-		flags:   0,
-		msgType: msgType,
-		from:    from,
-		to:      to,
-		dest:    dest,
-		payload: payload,
-		extra:   extra,
+		tseq:      0,
+		tid:       0,
+		timestamp: 0,
+		version:   1,
+		flags:     0,
+		msgType:   msgType,
+		from:      from,
+		to:        to,
+		dest:      dest,
+		payload:   payload,
+		extra:     extra,
 	}
 
 	if dest != 0 {
@@ -118,6 +121,9 @@ func (m *Message) Unmarshal(data []byte) error {
 	m.tid = data[p]
 	p += 1
 
+	m.timestamp = binary.BigEndian.Uint16(data[p : p+2])
+	p += 2
+
 	versionAndFlags := binary.BigEndian.Uint16(data[p : p+2])
 	p += 2
 	m.version = (versionAndFlags & 0xf000) >> 12
@@ -149,8 +155,10 @@ func (m *Message) Unmarshal(data []byte) error {
 	}
 
 	if len >= p+int(payloadLen) {
-		//TODO; 这个地方是copy呢？还是直接这样呢?
+		//TODO; 这个地方是copy呢？还是直接这样呢? 貌似不copy也是可以的。
 		m.payload = data[p : p+int(payloadLen)]
+		//m.payload = make([]byte,payloadLen)
+		//copy(m.payload, data[p : p+int(payloadLen)])
 		p += int(payloadLen)
 	}
 
@@ -170,7 +178,7 @@ func (m *Message) Unmarshal(data []byte) error {
 }
 
 func (m *Message) Marshal() []byte {
-	messageLength := 2 + 1 + 2 + 1 + 8 + 8 + 2 + len(m.payload)
+	messageLength := 2 + 1 + 2 + 2 + 1 + 8 + 8 + 2 + len(m.payload)
 	if m.HasFlag(UdpMessageFlagDest) {
 		messageLength += 8
 	}
@@ -185,6 +193,8 @@ func (m *Message) Marshal() []byte {
 	p += 2
 	buf[p] = m.tid
 	p += 1
+	binary.BigEndian.PutUint16(buf[p:p+2], m.timestamp)
+	p += 2
 	versionAndFlags := (m.flags & 0x0fff) | (m.version&0x000f)<<12
 	binary.BigEndian.PutUint16(buf[p:p+2], uint16(versionAndFlags))
 	p += 2
@@ -222,4 +232,16 @@ func (m *Message) HasFlag(flag uint16) bool {
 
 func (m *Message) Payload() []byte {
 	return m.payload
+}
+
+func (m *Message) NetTrafficSize() uint16 {
+	size := 28 + 8 + 24 + len(m.payload)
+	if m.HasFlag(UdpMessageFlagDest) {
+		size += 8
+	}
+	if m.HasFlag(UdpMessageFlagExtra) {
+		size += 2 + len(m.extra)
+	}
+
+	return uint16(size)
 }

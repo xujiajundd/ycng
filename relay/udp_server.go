@@ -39,6 +39,7 @@ func (u *UdpServer) Start() {
 	if err != nil {
 		logging.Logger.Error("error ListenUDP")
 	}
+	logging.Logger.Info("listen on port:", u.saddr)
 
 	u.conn = conn
 
@@ -62,6 +63,10 @@ func (u *UdpServer) handleClient() {
 			fromUdpAddr: addr,
 			time:        time.Now().UnixNano(),
 		}
+		//go func() {  //模拟一下延迟
+		//   time.Sleep(100*time.Millisecond);
+		//   u.subscriberCh <- packet
+		//}()
 
 		u.subscriberCh <- packet
 	}

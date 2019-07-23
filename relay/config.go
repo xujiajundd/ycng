@@ -7,7 +7,10 @@
 
 package relay
 
-import "github.com/urfave/cli"
+import (
+	"github.com/urfave/cli"
+	"fmt"
+)
 
 type Config struct {
 	Dir string `toml:"dir"`
@@ -16,7 +19,9 @@ type Config struct {
 
 func GetConfig(ctx *cli.Context) *Config {
 	config := GetDefaultConfig()
-
+    if ctx.GlobalIsSet("port") {
+    	config.UdpAddr = fmt.Sprintf(":%d", ctx.GlobalInt("port"))
+	}
 	return config
 }
 

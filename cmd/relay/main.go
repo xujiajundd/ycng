@@ -28,6 +28,13 @@ func init() {
 	app.HideVersion = true
 	app.Copyright = "Copyright 2017-2018 The yeecall Authors"
 
+	app.Flags = []cli.Flag{
+		cli.IntFlag{
+			Name: "port",
+			Value: 19001,
+			Usage: "udp address port",
+		},
+	}
 	app.Action = Relay
 }
 

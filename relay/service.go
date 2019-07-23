@@ -42,7 +42,7 @@ func NewService(config *Config) *Service {
 		packetReceiveCh: make(chan *ReceivedPacket, 10),
 		isRunning:       false,
 		stop:            make(chan struct{}),
-		ticker:          time.NewTicker(1 * time.Second),
+		ticker:          time.NewTicker(10 * time.Second),
 	}
 
 	service.udp_server = NewUdpServer(config, service.packetReceiveCh)
@@ -98,7 +98,7 @@ func (s *Service) loop() {
 		case packet := <-s.packetReceiveCh:
 			s.handlePacket(packet)
 		case time := <-s.ticker.C:
-           s.handleTicker(time)
+			s.handleTicker(time)
 		}
 	}
 }
@@ -164,6 +164,8 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 
 	//当前用户注册到session
 	participant := &Participant{Id: msg.from, UdpAddr: packet.fromUdpAddr, TcpConn: nil}
+	participant.LastActiveTime = time.Now()
+	participant.Metrics = NewMetrics()
 	session.Participants[participant.Id] = participant
 
 	//回复
@@ -175,11 +177,28 @@ func (s *Service) handleMessageAudioStream(msg *Message) {
 	//logging.Logger.Info("received audio from ", msg.from, " to ", msg.to)
 
 	session := s.sessions[msg.to]
+
 	if session != nil {
-		for _, p := range session.Participants {
-			if p.Id != msg.from || p.Id == 0 {
-				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+		participant := session.Participants[msg.from]
+		if participant != nil {
+			participant.LastActiveTime = time.Now()
+			participant.Metrics.AddEntry(msg.tid, msg.tseq, msg.NetTrafficSize())
+			for _, p := range session.Participants {
+				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
+					if p.PendingMsg == nil {
+						p.PendingMsg = msg
+					} else {
+						p.PendingMsg.tseq = p.Tseq
+						msg.tseq = p.Tseq
+						p.Tseq++
+						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						p.PendingMsg = nil
+					}
+				}
 			}
+		} else {
+			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
 		}
 	} else {
 		logging.Logger.Info("session not existed", msg.to)
@@ -190,11 +209,28 @@ func (s *Service) handleMessageVideoStream(msg *Message) {
 	//logging.Logger.Info("received video from ", msg.from, " to ", msg.to)
 
 	session := s.sessions[msg.to]
+
 	if session != nil {
-		for _, p := range session.Participants {
-			if p.Id != msg.from || p.Id == 0 {
-				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+		participant := session.Participants[msg.from]
+		if participant != nil {
+			participant.LastActiveTime = time.Now()
+			participant.Metrics.AddEntry(msg.tid, msg.tseq, msg.NetTrafficSize())
+			for _, p := range session.Participants {
+				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
+					if p.PendingMsg == nil {
+						p.PendingMsg = msg
+					} else {
+						p.PendingMsg.tseq = p.Tseq
+						msg.tseq = p.Tseq
+						p.Tseq++
+						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						p.PendingMsg = nil
+					}
+				}
 			}
+		} else {
+			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
 		}
 	} else {
 		logging.Logger.Info("session not existed", msg.to)
@@ -205,11 +241,28 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message) {
 	logging.Logger.Info("received video iframe from ", msg.from, " to ", msg.to)
 
 	session := s.sessions[msg.to]
+
 	if session != nil {
-		for _, p := range session.Participants {
-			if p.Id != msg.from || p.Id == 0 {
-				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+		participant := session.Participants[msg.from]
+		if participant != nil {
+			participant.LastActiveTime = time.Now()
+			participant.Metrics.AddEntry(msg.tid, msg.tseq, msg.NetTrafficSize())
+			for _, p := range session.Participants {
+				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
+					if p.PendingMsg == nil {
+						p.PendingMsg = msg
+					} else {
+						p.PendingMsg.tseq = p.Tseq
+						msg.tseq = p.Tseq
+						p.Tseq++
+						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						p.PendingMsg = nil
+					}
+				}
 			}
+		} else {
+			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
 		}
 	} else {
 		logging.Logger.Info("session not existed", msg.to)
@@ -217,14 +270,21 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message) {
 }
 
 func (s *Service) handleMessageVideoASkForIFrame(msg *Message) {
-	logging.Logger.Info("received ask for iframe from ", msg.from, " to ", msg.to)
+	logging.Logger.Info("received ask for iframe from ", msg.from, " to ", msg.to, " dest ", msg.dest)
 
 	session := s.sessions[msg.to]
+
 	if session != nil {
-		for _, p := range session.Participants {
-			if p.Id != msg.from || p.Id == 0 {
-				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+		participant := session.Participants[msg.from]
+		if participant != nil {
+			participant.LastActiveTime = time.Now()
+			for _, p := range session.Participants {
+				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) {
+					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+				}
 			}
+		} else {
+			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
 		}
 	} else {
 		logging.Logger.Info("session not existed ", msg.to)
@@ -232,14 +292,21 @@ func (s *Service) handleMessageVideoASkForIFrame(msg *Message) {
 }
 
 func (s *Service) handleMessageVideoNack(msg *Message) {
-	logging.Logger.Info("received nack from ", msg.from, " to ", msg.to)
+	logging.Logger.Info("received nack from ", msg.from, " to ", msg.to, " dest ", msg.dest)
 
 	session := s.sessions[msg.to]
+
 	if session != nil {
-		for _, p := range session.Participants {
-			if p.Id != msg.from || p.Id == 0 {
-				s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+		participant := session.Participants[msg.from]
+		if participant != nil {
+			participant.LastActiveTime = time.Now()
+			for _, p := range session.Participants {
+				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) {
+					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+				}
 			}
+		} else {
+			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
 		}
 	} else {
 		logging.Logger.Info("session not existed ", msg.to)
@@ -249,10 +316,10 @@ func (s *Service) handleMessageVideoNack(msg *Message) {
 func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
 	logging.Logger.Info("received user reg from ", msg.from, " to ", msg.to)
 
-    user := s.users[msg.from]
-    if user == nil {
-    	user := NewUser(msg.from)
-    	s.users[msg.from] = user
+	user := s.users[msg.from]
+	if user == nil {
+		user = NewUser(msg.from)
+		s.users[msg.from] = user
 	}
 
 	user.UdpAddr = packet.fromUdpAddr
@@ -269,8 +336,38 @@ func (s *Service) handleMessageUserSignal(msg *Message) {
 	}
 }
 
-
 //清理过期的session和user
-func (s *Service) handleTicker(time time.Time) {
+func (s *Service) handleTicker(now time.Time) {
+	for skey, session := range s.sessions {
+		for pkey, participant := range session.Participants {
+			if now.Sub(participant.LastActiveTime) > 60*time.Second {
+				delete(session.Participants, pkey)
+				logging.Logger.Info("delete participant ", pkey, " from session ", skey, " for inactive 60s")
+			}
+		}
+		if len(session.Participants) == 0 {
+			delete(s.sessions, skey)
+			logging.Logger.Info("delete session ", skey, " for all participants quit")
+		}
+	}
 
+	for ukey, user := range s.users {
+		if now.Sub(user.LastActiveTime) > 600*time.Second {
+			delete(s.users, ukey)
+			logging.Logger.Info("delete user ", ukey, " for inactive 10 minutes")
+		}
+	}
+
+	logging.Logger.Infoln("details:")
+	for skey, session := range s.sessions {
+		logging.Logger.Info("    session: ", skey)
+		for pkey, participant := range session.Participants {
+			logging.Logger.Info("       participant:", pkey)
+			participant.Metrics.Process()
+		}
+	}
+
+	for ukey, _ := range s.users {
+		logging.Logger.Info("    reg user:", ukey)
+	}
 }

@@ -108,6 +108,7 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 	msg, err := NewMessageFromObfuscatedData(packet.body)
 	if err != nil {
 		logging.Logger.Warn("error:", err)
+		return
 	}
 
 	switch msg.msgType {
@@ -143,7 +144,8 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 
 	case UdpMessageTypeUserSignal:
 		s.handleMessageUserSignal(msg)
-
+	default:
+		logging.Logger.Warn("unrecognized message type")
 	}
 }
 
@@ -358,16 +360,18 @@ func (s *Service) handleTicker(now time.Time) {
 		}
 	}
 
-	logging.Logger.Infoln("details:")
-	for skey, session := range s.sessions {
-		logging.Logger.Info("    session: ", skey)
-		for pkey, participant := range session.Participants {
-			logging.Logger.Info("       participant:", pkey)
-			participant.Metrics.Process()
+	if len(s.sessions) > 0 {
+		logging.Logger.Infoln("details:")
+		for skey, session := range s.sessions {
+			logging.Logger.Info("    session: ", skey)
+			for pkey, participant := range session.Participants {
+				logging.Logger.Info("       participant:", pkey)
+				participant.Metrics.Process()
+			}
 		}
-	}
 
-	for ukey, _ := range s.users {
-		logging.Logger.Info("    reg user:", ukey)
+		for ukey, _ := range s.users {
+			logging.Logger.Info("    reg user:", ukey)
+		}
 	}
 }

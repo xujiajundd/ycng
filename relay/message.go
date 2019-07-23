@@ -160,6 +160,8 @@ func (m *Message) Unmarshal(data []byte) error {
 		//m.payload = make([]byte,payloadLen)
 		//copy(m.payload, data[p : p+int(payloadLen)])
 		p += int(payloadLen)
+	} else {
+		return errors.New("incorrect packet len for payload")
 	}
 
 	if m.HasFlag(UdpMessageFlagExtra) {
@@ -171,6 +173,8 @@ func (m *Message) Unmarshal(data []byte) error {
 		if len >= p+int(extraLen) {
 			m.extra = data[p : p+int(extraLen)]
 			p += int(extraLen)
+		} else {
+			return errors.New("incorrect packet len for extra")
 		}
 	}
 

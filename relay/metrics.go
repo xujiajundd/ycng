@@ -89,7 +89,7 @@ func(m *Metrics) Process() {
 
 	//计算结果
 	pShould := 2 * (maxSeq - minSeq) + 2
-	if pShould < 0 {
+	if pShould < 0 || (minSeq == 0 && maxSeq == 0) {
 		pShould = 0
 	}
 	pRecv := m.pos - rept

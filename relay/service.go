@@ -334,6 +334,7 @@ func (s *Service) handleMessageUserSignal(msg *Message) {
 	user := s.users[msg.to]
 
 	if user != nil {
+		logging.Logger.Info("route user signal from ", msg.from, " to ", msg.to)
 		s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
 	}
 }
@@ -360,13 +361,13 @@ func (s *Service) handleTicker(now time.Time) {
 		}
 	}
 
-	if len(s.sessions) > 0 {
+	if len(s.sessions) > 0 || len(s.users) > 0{
 		logging.Logger.Infoln("details:")
 		for skey, session := range s.sessions {
 			logging.Logger.Info("    session: ", skey)
 			for pkey, participant := range session.Participants {
 				logging.Logger.Info("       participant:", pkey)
-				participant.Metrics.Process()
+				participant.Metrics.Process() //这个临时放在这里，正常情况要放在反馈的地方。
 			}
 		}
 

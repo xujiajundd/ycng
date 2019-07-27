@@ -33,8 +33,9 @@ const (
 	UdpMessageTypeVideoOnlyIFrame   = 34 //视频只收i帧
 	UdpMessageTypeVideoOnlyAudio    = 35 //视频只收音频
 
-	UdpMessageTypeUserReg    = 200 //注册一个客户端
-	UdpMessageTypeUserSignal = 201 //通过UDP来转发的信令，信令统一在push中定义
+	UdpMessageTypeUserReg         = 200 //注册一个客户端
+	UdpMessageTypeUserRegReceived = 201
+	UdpMessageTypeUserSignal      = 202 //通过UDP来转发的信令，信令统一在push中定义
 )
 
 const (

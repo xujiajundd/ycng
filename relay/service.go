@@ -316,7 +316,7 @@ func (s *Service) handleMessageVideoNack(msg *Message) {
 }
 
 func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received user reg from ", msg.from, " to ", msg.to)
+	logging.Logger.Info("received user reg from ", msg.from, " to ", msg.to, packet.fromUdpAddr)
 
 	user := s.users[msg.from]
 	if user == nil {
@@ -326,6 +326,8 @@ func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
 
 	user.UdpAddr = packet.fromUdpAddr
 	user.LastActiveTime = time.Now()
+	msg.msgType = UdpMessageTypeUserRegReceived
+	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
 }
 
 func (s *Service) handleMessageUserSignal(msg *Message) {
@@ -334,7 +336,7 @@ func (s *Service) handleMessageUserSignal(msg *Message) {
 	user := s.users[msg.to]
 
 	if user != nil {
-		logging.Logger.Info("route user signal from ", msg.from, " to ", msg.to)
+		logging.Logger.Info("route user signal from ", msg.from, " to ", msg.to, user.UdpAddr)
 		s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
 	}
 }

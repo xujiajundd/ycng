@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xujiajundd/ycng/relay"
-	"github.com/xujiajundd/ycng/utils/logging"
 	"encoding/json"
+	"github.com/xujiajundd/ycng/relay"
 	"github.com/xujiajundd/ycng/utils"
+	"github.com/xujiajundd/ycng/utils/logging"
 )
 
 type SessionManager struct {
@@ -27,12 +27,12 @@ type SessionManager struct {
 	saddr        string
 	conn         *net.UDPConn
 	subscriberCh chan *relay.ReceivedPacket
-    dedup        *utils.LRU
-	isRunning bool
-	lock      sync.RWMutex
-	stop      chan struct{}
-	wg        sync.WaitGroup
-	ticker    *time.Ticker
+	dedup        *utils.LRU
+	isRunning    bool
+	lock         sync.RWMutex
+	stop         chan struct{}
+	wg           sync.WaitGroup
+	ticker       *time.Ticker
 }
 
 func NewSessionManager() *SessionManager {
@@ -40,7 +40,7 @@ func NewSessionManager() *SessionManager {
 		sessions:     make(map[uint64]*Session),
 		saddr:        ":20005",
 		subscriberCh: make(chan *relay.ReceivedPacket),
-		dedup: utils.NewLRU(100, nil),
+		dedup:        utils.NewLRU(100, nil),
 		isRunning:    false,
 		stop:         make(chan struct{}),
 		ticker:       time.NewTicker(200 * time.Second),
@@ -153,19 +153,20 @@ func (sm *SessionManager) handlePacket(packet *relay.ReceivedPacket) {
 }
 
 func (sm *SessionManager) handleTicker(now time.Time) {
-    sm.registerUserToRelays()  //每隔200秒重新注册一次
+	sm.registerUserToRelays() //每隔200秒重新注册一次
 }
 
 func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 	//去重
-    if sm.dedup.Contains(string(msg.Payload)) {
-    	    return
+	if sm.dedup.Contains(string(msg.Payload)) {
+		return
 	} else {
 		sm.dedup.Add(string(msg.Payload), true)
 	}
 
-    signal := NewSignal()
+	signal := NewSignal()
 	json.Unmarshal(msg.Payload, signal)
+	logging.Logger.Info(string(msg.Payload))
 	logging.Logger.Info(signal, signal.From, signal.To)
 
 	msg.From = 0xffffffffffffffff
@@ -175,8 +176,8 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 
 func (sm *SessionManager) registerUserToRelays() {
 	msg := relay.NewMessage(relay.UdpMessageTypeUserReg,
-			0xffffffffffffffff, 0, 0, nil,nil)
-    sm.sendMessageToRelays(msg)
+		0xffffffffffffffff, 0, 0, nil, nil)
+	sm.sendMessageToRelays(msg)
 }
 
 func (sm *SessionManager) sendMessageToRelays(msg *relay.Message) {

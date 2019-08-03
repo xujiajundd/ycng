@@ -11,6 +11,7 @@ type Signal struct {
     Category  uint16   `json:"c"`
     Signal    uint16   `json:"g"`
     Timestamp uint64   `json:"ts"`
+    SessionId uint64   `json:"s"`
     From      uint64   `json:"f"`
     To        uint64   `json:"t"`
     Ttl       uint32   `json:"l"`

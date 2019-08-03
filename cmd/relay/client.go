@@ -138,6 +138,6 @@ func readServer(conn *net.UDPConn) {
          	logging.Logger.Error("message from obf error ", err)
 		 }
 
-		 fmt.Println("recv:", string(msg.Payload()))
+		 fmt.Println("recv:", string(msg.Payload))
 	}
 }

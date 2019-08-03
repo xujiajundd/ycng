@@ -105,13 +105,13 @@ func (s *Service) loop() {
 
 func (s *Service) handlePacket(packet *ReceivedPacket) {
 	//TODO：这个可以做性能优化，分配到多个线程去处理
-	msg, err := NewMessageFromObfuscatedData(packet.body)
+	msg, err := NewMessageFromObfuscatedData(packet.Body)
 	if err != nil {
 		logging.Logger.Warn("error:", err)
 		return
 	}
 
-	switch msg.msgType {
+	switch msg.MsgType {
 	case UdpMessageTypeNoop:
 		s.handleMessageNoop(msg)
 
@@ -154,44 +154,44 @@ func (s *Service) handleMessageNoop(msg *Message) {
 }
 
 func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received turn reg from ", msg.from, " for session ", msg.to)
+	logging.Logger.Info("received turn reg From ", msg.From, " for session ", msg.To)
 
 	//检查当前session是否存在
-	session := s.sessions[msg.to]
+	session := s.sessions[msg.To]
 	if session == nil {
-		session = NewSession(msg.to)
+		session = NewSession(msg.To)
 		session.Participants = make(map[uint64]*Participant)
-		s.sessions[msg.to] = session
+		s.sessions[msg.To] = session
 	}
 
 	//当前用户注册到session
-	participant := &Participant{Id: msg.from, UdpAddr: packet.fromUdpAddr, TcpConn: nil}
+	participant := &Participant{Id: msg.From, UdpAddr: packet.FromUdpAddr, TcpConn: nil}
 	participant.LastActiveTime = time.Now()
 	participant.Metrics = NewMetrics()
 	session.Participants[participant.Id] = participant
 
 	//回复
-	msg.msgType = UdpMessageTypeTurnRegReceived
+	msg.MsgType = UdpMessageTypeTurnRegReceived
 	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), participant.UdpAddr)
 }
 
 func (s *Service) handleMessageAudioStream(msg *Message) {
-	//logging.Logger.Info("received audio from ", msg.from, " to ", msg.to)
+	//logging.Logger.Info("received audio From ", msg.From, " To ", msg.To)
 
-	session := s.sessions[msg.to]
+	session := s.sessions[msg.To]
 
 	if session != nil {
-		participant := session.Participants[msg.from]
+		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			participant.Metrics.AddEntry(msg.tid, msg.tseq, msg.NetTrafficSize())
+			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
 			for _, p := range session.Participants {
-				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
+				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
 					} else {
-						p.PendingMsg.tseq = p.Tseq
-						msg.tseq = p.Tseq
+						p.PendingMsg.Tseq = p.Tseq
+						msg.Tseq = p.Tseq
 						p.Tseq++
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
@@ -200,30 +200,30 @@ func (s *Service) handleMessageAudioStream(msg *Message) {
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
+			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
 		}
 	} else {
-		logging.Logger.Info("session not existed", msg.to)
+		logging.Logger.Info("session not existed", msg.To)
 	}
 }
 
 func (s *Service) handleMessageVideoStream(msg *Message) {
-	//logging.Logger.Info("received video from ", msg.from, " to ", msg.to)
+	//logging.Logger.Info("received video From ", msg.From, " To ", msg.To)
 
-	session := s.sessions[msg.to]
+	session := s.sessions[msg.To]
 
 	if session != nil {
-		participant := session.Participants[msg.from]
+		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			participant.Metrics.AddEntry(msg.tid, msg.tseq, msg.NetTrafficSize())
+			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
 			for _, p := range session.Participants {
-				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
+				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
 					} else {
-						p.PendingMsg.tseq = p.Tseq
-						msg.tseq = p.Tseq
+						p.PendingMsg.Tseq = p.Tseq
+						msg.Tseq = p.Tseq
 						p.Tseq++
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
@@ -232,30 +232,30 @@ func (s *Service) handleMessageVideoStream(msg *Message) {
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
+			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
 		}
 	} else {
-		logging.Logger.Info("session not existed", msg.to)
+		logging.Logger.Info("session not existed", msg.To)
 	}
 }
 
 func (s *Service) handleMessageVideoStreamIFrame(msg *Message) {
-	logging.Logger.Info("received video iframe from ", msg.from, " to ", msg.to)
+	logging.Logger.Info("received video iframe From ", msg.From, " To ", msg.To)
 
-	session := s.sessions[msg.to]
+	session := s.sessions[msg.To]
 
 	if session != nil {
-		participant := session.Participants[msg.from]
+		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			participant.Metrics.AddEntry(msg.tid, msg.tseq, msg.NetTrafficSize())
+			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
 			for _, p := range session.Participants {
-				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
+				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
 					} else {
-						p.PendingMsg.tseq = p.Tseq
-						msg.tseq = p.Tseq
+						p.PendingMsg.Tseq = p.Tseq
+						msg.Tseq = p.Tseq
 						p.Tseq++
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
@@ -264,79 +264,79 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message) {
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
+			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
 		}
 	} else {
-		logging.Logger.Info("session not existed", msg.to)
+		logging.Logger.Info("session not existed", msg.To)
 	}
 }
 
 func (s *Service) handleMessageVideoASkForIFrame(msg *Message) {
-	logging.Logger.Info("received ask for iframe from ", msg.from, " to ", msg.to, " dest ", msg.dest)
+	logging.Logger.Info("received ask for iframe From ", msg.From, " To ", msg.To, " Dest ", msg.Dest)
 
-	session := s.sessions[msg.to]
+	session := s.sessions[msg.To]
 
 	if session != nil {
-		participant := session.Participants[msg.from]
+		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
 			for _, p := range session.Participants {
-				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) {
+				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
 					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
+			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
 		}
 	} else {
-		logging.Logger.Info("session not existed ", msg.to)
+		logging.Logger.Info("session not existed ", msg.To)
 	}
 }
 
 func (s *Service) handleMessageVideoNack(msg *Message) {
-	logging.Logger.Info("received nack from ", msg.from, " to ", msg.to, " dest ", msg.dest)
+	logging.Logger.Info("received nack From ", msg.From, " To ", msg.To, " Dest ", msg.Dest)
 
-	session := s.sessions[msg.to]
+	session := s.sessions[msg.To]
 
 	if session != nil {
-		participant := session.Participants[msg.from]
+		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
 			for _, p := range session.Participants {
-				if p.Id != msg.from || (p.Id == 0 && msg.from == 0) {
+				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
 					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.from, " not existed in session", msg.to)
+			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
 		}
 	} else {
-		logging.Logger.Info("session not existed ", msg.to)
+		logging.Logger.Info("session not existed ", msg.To)
 	}
 }
 
 func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received user reg from ", msg.from, " to ", msg.to, packet.fromUdpAddr)
+	logging.Logger.Info("received user reg From ", msg.From, " To ", msg.To, packet.FromUdpAddr)
 
-	user := s.users[msg.from]
+	user := s.users[msg.From]
 	if user == nil {
-		user = NewUser(msg.from)
-		s.users[msg.from] = user
+		user = NewUser(msg.From)
+		s.users[msg.From] = user
 	}
 
-	user.UdpAddr = packet.fromUdpAddr
+	user.UdpAddr = packet.FromUdpAddr
 	user.LastActiveTime = time.Now()
-	msg.msgType = UdpMessageTypeUserRegReceived
+	msg.MsgType = UdpMessageTypeUserRegReceived
 	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
 }
 
 func (s *Service) handleMessageUserSignal(msg *Message) {
-	logging.Logger.Info("received user signal from ", msg.from, " to ", msg.to)
+	logging.Logger.Info("received user signal From ", msg.From, " To ", msg.To)
 
-	user := s.users[msg.to]
+	user := s.users[msg.To]
 
 	if user != nil {
-		logging.Logger.Info("route user signal from ", msg.from, " to ", msg.to, user.UdpAddr)
+		logging.Logger.Info("route user signal From ", msg.From, " To ", msg.To, user.UdpAddr)
 		s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
 	}
 }
@@ -347,7 +347,7 @@ func (s *Service) handleTicker(now time.Time) {
 		for pkey, participant := range session.Participants {
 			if now.Sub(participant.LastActiveTime) > 60*time.Second {
 				delete(session.Participants, pkey)
-				logging.Logger.Info("delete participant ", pkey, " from session ", skey, " for inactive 60s")
+				logging.Logger.Info("delete participant ", pkey, " From session ", skey, " for inactive 60s")
 			}
 		}
 		if len(session.Participants) == 0 {

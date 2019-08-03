@@ -44,39 +44,39 @@ const (
 )
 
 type Message struct {
-	tseq      int16
-	tid       byte
-	timestamp uint16
-	version   uint16
-	flags     uint16
-	msgType   uint8
-	from      uint64
-	to        uint64
-	dest      uint64
-	payload   []byte
-	extra     []byte
+	Tseq      int16
+	Tid       byte
+	Timestamp uint16
+	Version   uint16
+	Flags     uint16
+	MsgType   uint8
+	From      uint64
+	To        uint64
+	Dest      uint64
+	Payload   []byte
+	Extra     []byte
 }
 
 type ReceivedPacket struct {
-	fromUdpAddr *net.UDPAddr
-	fromTcpConn *net.TCPConn
-	body        []byte
-	time        int64
+	FromUdpAddr *net.UDPAddr
+	FromTcpConn *net.TCPConn
+	Body        []byte
+	Time        int64
 }
 
 func NewMessage(msgType uint8, from uint64, to uint64, dest uint64, payload []byte, extra []byte) *Message {
 	msg := &Message{
-		tseq:      0,
-		tid:       0,
-		timestamp: 0,
-		version:   1,
-		flags:     0,
-		msgType:   msgType,
-		from:      from,
-		to:        to,
-		dest:      dest,
-		payload:   payload,
-		extra:     extra,
+		Tseq:      0,
+		Tid:       0,
+		Timestamp: 0,
+		Version:   1,
+		Flags:     0,
+		MsgType:   msgType,
+		From:      from,
+		To:        to,
+		Dest:      dest,
+		Payload:   payload,
+		Extra:     extra,
 	}
 
 	if dest != 0 {
@@ -116,35 +116,35 @@ func (m *Message) Unmarshal(data []byte) error {
 	if len < 24 {
 		return errors.New("incorrect packet, len < 24")
 	}
-	m.tseq = int16(binary.BigEndian.Uint16(data[p : p+2]))
+	m.Tseq = int16(binary.BigEndian.Uint16(data[p : p+2]))
 	p += 2
 
-	m.tid = data[p]
+	m.Tid = data[p]
 	p += 1
 
-	m.timestamp = binary.BigEndian.Uint16(data[p : p+2])
+	m.Timestamp = binary.BigEndian.Uint16(data[p : p+2])
 	p += 2
 
 	versionAndFlags := binary.BigEndian.Uint16(data[p : p+2])
 	p += 2
-	m.version = (versionAndFlags & 0xf000) >> 12
-	m.flags = versionAndFlags & 0xfff
+	m.Version = (versionAndFlags & 0xf000) >> 12
+	m.Flags = versionAndFlags & 0xfff
 
-	m.msgType = data[p]
+	m.MsgType = data[p]
 	p += 1
 
 	if len >= p+8 {
-		m.from = binary.BigEndian.Uint64(data[p : p+8])
+		m.From = binary.BigEndian.Uint64(data[p : p+8])
 		p += 8
 	}
 	if len >= p+8 {
-		m.to = binary.BigEndian.Uint64(data[p : p+8])
+		m.To = binary.BigEndian.Uint64(data[p : p+8])
 		p += 8
 	}
 
 	if m.HasFlag(UdpMessageFlagDest) {
 		if len >= p+8 {
-			m.dest = binary.BigEndian.Uint64(data[p : p+8])
+			m.Dest = binary.BigEndian.Uint64(data[p : p+8])
 			p += 8
 		}
 	}
@@ -157,12 +157,12 @@ func (m *Message) Unmarshal(data []byte) error {
 
 	if len >= p+int(payloadLen) {
 		//TODO; 这个地方是copy呢？还是直接这样呢? 貌似不copy也是可以的。
-		m.payload = data[p : p+int(payloadLen)]
-		//m.payload = make([]byte,payloadLen)
-		//copy(m.payload, data[p : p+int(payloadLen)])
+		m.Payload = data[p : p+int(payloadLen)]
+		//m.Payload = make([]byte,payloadLen)
+		//copy(m.Payload, data[p : p+int(payloadLen)])
 		p += int(payloadLen)
 	} else {
-		return errors.New("incorrect packet len for payload")
+		return errors.New("incorrect packet len for Payload")
 	}
 
 	if m.HasFlag(UdpMessageFlagExtra) {
@@ -172,10 +172,10 @@ func (m *Message) Unmarshal(data []byte) error {
 			p += 2
 		}
 		if len >= p+int(extraLen) {
-			m.extra = data[p : p+int(extraLen)]
+			m.Extra = data[p : p+int(extraLen)]
 			p += int(extraLen)
 		} else {
-			return errors.New("incorrect packet len for extra")
+			return errors.New("incorrect packet len for Extra")
 		}
 	}
 
@@ -183,69 +183,66 @@ func (m *Message) Unmarshal(data []byte) error {
 }
 
 func (m *Message) Marshal() []byte {
-	messageLength := 2 + 1 + 2 + 2 + 1 + 8 + 8 + 2 + len(m.payload)
+	messageLength := 2 + 1 + 2 + 2 + 1 + 8 + 8 + 2 + len(m.Payload)
 	if m.HasFlag(UdpMessageFlagDest) {
 		messageLength += 8
 	}
 
 	if m.HasFlag(UdpMessageFlagExtra) {
-		messageLength += 2 + len(m.extra)
+		messageLength += 2 + len(m.Extra)
 	}
 
 	buf := make([]byte, messageLength)
 	p := 0
-	binary.BigEndian.PutUint16(buf[p:p+2], uint16(m.tseq))
+	binary.BigEndian.PutUint16(buf[p:p+2], uint16(m.Tseq))
 	p += 2
-	buf[p] = m.tid
+	buf[p] = m.Tid
 	p += 1
-	binary.BigEndian.PutUint16(buf[p:p+2], m.timestamp)
+	binary.BigEndian.PutUint16(buf[p:p+2], m.Timestamp)
 	p += 2
-	versionAndFlags := (m.flags & 0x0fff) | (m.version&0x000f)<<12
+	versionAndFlags := (m.Flags & 0x0fff) | (m.Version&0x000f)<<12
 	binary.BigEndian.PutUint16(buf[p:p+2], uint16(versionAndFlags))
 	p += 2
-	buf[p] = m.msgType
+	buf[p] = m.MsgType
 	p += 1
-	binary.BigEndian.PutUint64(buf[p:p+8], m.from)
+	binary.BigEndian.PutUint64(buf[p:p+8], m.From)
 	p += 8
-	binary.BigEndian.PutUint64(buf[p:p+8], m.to)
+	binary.BigEndian.PutUint64(buf[p:p+8], m.To)
 	p += 8
 	if m.HasFlag(UdpMessageFlagDest) {
-		binary.BigEndian.PutUint64(buf[p:p+8], m.dest)
+		binary.BigEndian.PutUint64(buf[p:p+8], m.Dest)
 		p += 8
 	}
-	binary.BigEndian.PutUint16(buf[p:p+2], uint16(len(m.payload)))
+	binary.BigEndian.PutUint16(buf[p:p+2], uint16(len(m.Payload)))
 	p += 2
-	copy(buf[p:p+int(len(m.payload))], m.payload)
-	p += int(len(m.payload))
+	copy(buf[p:p+int(len(m.Payload))], m.Payload)
+	p += int(len(m.Payload))
 
 	if m.HasFlag(UdpMessageFlagExtra) {
-		binary.BigEndian.PutUint16(buf[p:p+2], uint16(len(m.extra)))
+		binary.BigEndian.PutUint16(buf[p:p+2], uint16(len(m.Extra)))
 		p += 2
-		copy(buf[p:p+int(len(m.extra))], m.extra)
+		copy(buf[p:p+int(len(m.Extra))], m.Extra)
 	}
 
 	return buf
 }
 
 func (m *Message) SetFlag(flag uint16) {
-	m.flags = m.flags | flag
+	m.Flags = m.Flags | flag
 }
 
 func (m *Message) HasFlag(flag uint16) bool {
-	return (m.flags & flag) == flag
+	return (m.Flags & flag) == flag
 }
 
-func (m *Message) Payload() []byte {
-	return m.payload
-}
 
 func (m *Message) NetTrafficSize() uint16 {
-	size := 28 + 8 + 24 + len(m.payload)
+	size := 28 + 8 + 24 + len(m.Payload)
 	if m.HasFlag(UdpMessageFlagDest) {
 		size += 8
 	}
 	if m.HasFlag(UdpMessageFlagExtra) {
-		size += 2 + len(m.extra)
+		size += 2 + len(m.Extra)
 	}
 
 	return uint16(size)

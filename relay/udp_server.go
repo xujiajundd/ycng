@@ -59,12 +59,12 @@ func (u *UdpServer) handleClient() {
 		data := make([]byte, size)
 		copy(data, buf[0:size])
 		packet := &ReceivedPacket{
-			body:        data,
-			fromUdpAddr: addr,
-			time:        time.Now().UnixNano(),
+			Body:        data,
+			FromUdpAddr: addr,
+			Time:        time.Now().UnixNano(),
 		}
 		//go func() {  //模拟一下延迟
-		//   time.Sleep(100*time.Millisecond);
+		//   Time.Sleep(100*Time.Millisecond);
 		//   u.subscriberCh <- packet
 		//}()
 

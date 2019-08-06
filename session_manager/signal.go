@@ -7,17 +7,74 @@
 
 package session_manager
 
+import (
+	"bytes"
+	"encoding/json"
+	"time"
+
+	"github.com/xujiajundd/ycng/utils/logging"
+)
+
+const (
+	YCKSignalCategoryCall = 1
+
+	YCKCallSignalTypeInvite      = 1
+	YCKCallSignalTypeSidRequest  = 2
+	YCKCallSignalTypeSidCreated  = 3
+	YCKCallSignalTypeRing        = 4
+	YCKCallSignalTypeServerRing  = 5
+	YCKCallSignalTypeAccept      = 6
+	YCKCallSignalTypeReject      = 7
+	YCKCallSignalTypeCancel      = 8
+	YCKCallSignalTypeEnd         = 9
+	YCKCallSignalTypeBusy        = 10
+	YCKCallSignalTypeMemberOp    = 20
+	YCKCallSignalTypeMemberState = 21
+)
+
 type Signal struct {
-    Category  uint16   `json:"c"`
-    Signal    uint16   `json:"g"`
-    Timestamp uint64   `json:"ts"`
-    SessionId uint64   `json:"s"`
-    From      uint64   `json:"f"`
-    To        uint64   `json:"t"`
-    Ttl       uint32   `json:"l"`
+	Category  uint16                 `json:"c"`
+	Signal    uint16                 `json:"g"`
+	Timestamp uint64                 `json:"ts"`
+	SessionId uint64                 `json:"s"`
+	From      uint64                 `json:"f"`
+	To        uint64                 `json:"t"`
+	Ttl       uint32                 `json:"l"`
+	Option    map[string]interface{} `json:"o"`
+	Info      map[string]interface{} `json:"i"`
 }
 
-func NewSignal() *Signal {
+func NewSignalTemp() *Signal {
 	s := &Signal{}
+
 	return s
+}
+
+func NewSignal(signal uint16, from uint64, to uint64, sid uint64) *Signal {
+	s := NewSignalTemp()
+	s.Category = YCKSignalCategoryCall
+	s.Timestamp = uint64(time.Now().UnixNano()) / 100000
+	s.Signal = signal
+	s.From = from
+	s.To = to
+	s.SessionId = sid
+	s.Ttl = 60000
+	return s
+}
+
+func (s *Signal) Unmarshal(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	err := decoder.Decode(s)
+	if err != nil {
+		return err
+	}
+	logging.Logger.Info(string(data))
+	logging.Logger.Info(s, s.From, s.To, s.Option, s.Info)
+
+	return nil
+}
+
+func (s *Signal) Marshal() ([]byte, error) {
+    return json.Marshal(s)
 }

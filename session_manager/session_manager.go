@@ -15,10 +15,14 @@ import (
 	"syscall"
 	"time"
 
-	"encoding/json"
 	"github.com/xujiajundd/ycng/relay"
 	"github.com/xujiajundd/ycng/utils"
 	"github.com/xujiajundd/ycng/utils/logging"
+	"math/rand"
+)
+
+const (
+	SessionManagerUserId = 0xffffffffffffffff
 )
 
 type SessionManager struct {
@@ -153,7 +157,10 @@ func (sm *SessionManager) handlePacket(packet *relay.ReceivedPacket) {
 }
 
 func (sm *SessionManager) handleTicker(now time.Time) {
-	sm.registerUserToRelays() //每隔200秒重新注册一次
+	//每隔200秒重新注册一次
+	sm.registerUserToRelays()
+
+	//清理已经结束的session，1-1有收到过end，多方发出或收到所有的end。或者sm主动轮询参与者？
 }
 
 func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
@@ -164,23 +171,96 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 		sm.dedup.Add(string(msg.Payload), true)
 	}
 
-	signal := NewSignal()
-	json.Unmarshal(msg.Payload, signal)
-	logging.Logger.Info(string(msg.Payload))
-	logging.Logger.Info(signal, signal.From, signal.To)
+	signal := NewSignalTemp()
+	err := signal.Unmarshal(msg.Payload)
+	if err != nil {
+		logging.Logger.Warn("signal unmarshal error:", err)
+		return
+	}
 
-	msg.From = 0xffffffffffffffff
-	msg.To = signal.To
-	sm.sendMessageToRelays(msg)
+	//1.如果invite中sid=0，则回复serverring带一个sid
+	//2.如果session不存在，创建一个session
+	//3.如果1-1mode，透明转发信令
+	//4.如果是多方模式，作为呼叫的一方参与，然后发member_state给所有参与方
+	//5.如果1-1mode时，收到member_op，转为多方模式。
+	//6.signal中的to为session_manager则为多方，如果to是其他帐号，则是1-1
+
+	if signal.Signal == YCKCallSignalTypeSidRequest {
+		//生成一个与现存不重复的sid
+		var sid uint64
+		for {
+			sid = rand.Uint64()
+			if sm.sessions[sid] == nil {
+				break
+			}
+		}
+		//创建session
+		session := NewSession(sid)
+		sm.sessions[sid] = session
+
+		//回复信令
+		sid_created := NewSignal(YCKCallSignalTypeSidCreated, SessionManagerUserId, signal.From, sid)
+		payload, err := sid_created.Marshal()
+		if err == nil {
+			msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.From, 0, payload, nil)
+			sm.sendSignalMessage(msg)
+		} else {
+			logging.Logger.Warn("signal marshal error:", err)
+		}
+		return
+	}
+
+	if signal.SessionId == 0 {
+		logging.Logger.Warn("error signal:", signal.Signal, " with sid=0 ", signal.From, signal.To)
+		//return
+	}
+
+	session := sm.sessions[signal.SessionId]
+	if session == nil {
+		logging.Logger.Warn("session not existed for ", signal)
+		//return
+	}
+
+
+	if signal.To != SessionManagerUserId {
+		//转发signal
+		if session.Mode == YCKCallModeMultiple { //进入多方模式后，不能再接受1-1信令
+			logging.Logger.Warn("receive 1-1 signal when in multipart mode")
+			return
+		}
+		payload, err := signal.Marshal()
+		if err == nil {
+			msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.To, 0, payload, nil)
+			sm.sendSignalMessage(msg)
+		} else {
+			logging.Logger.Warn("signal marshal error:", err)
+		}
+	} else {
+		//管理session，member状态
+		switch signal.Signal {
+		case YCKCallSignalTypeInvite:
+
+		case YCKCallSignalTypeCancel:
+
+		case YCKCallSignalTypeEnd:
+
+		case YCKCallSignalTypeMemberOp:
+			if session.Mode == YCKCallModeOneToOne { //1-1模式时收到多方信令则转入多方模式，并且要通知所有参与方改模式
+				session.Mode = YCKCallModeMultiple
+			}
+		default:
+
+		}
+	}
 }
 
 func (sm *SessionManager) registerUserToRelays() {
 	msg := relay.NewMessage(relay.UdpMessageTypeUserReg,
-		0xffffffffffffffff, 0, 0, nil, nil)
-	sm.sendMessageToRelays(msg)
+		SessionManagerUserId, 0, 0, nil, nil)
+	sm.sendSignalMessageByRelays(msg)
 }
 
-func (sm *SessionManager) sendMessageToRelays(msg *relay.Message) {
+func (sm *SessionManager) sendSignalMessageByRelays(msg *relay.Message) {
 	data := msg.ObfuscatedDataOfMessage()
 
 	for _, relay := range sm.relays {
@@ -194,6 +274,10 @@ func (sm *SessionManager) sendMessageToRelays(msg *relay.Message) {
 			logging.Logger.Error("udp write error", err)
 		}
 	}
+}
+
+func (sm *SessionManager) sendSignalMessage(msg *relay.Message) {
+	sm.sendSignalMessageByRelays(msg)
 }
 
 func (sm *SessionManager) GetRelays() {

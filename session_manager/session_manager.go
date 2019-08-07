@@ -11,14 +11,17 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
+	"encoding/json"
+	"math/rand"
+
 	"github.com/xujiajundd/ycng/relay"
 	"github.com/xujiajundd/ycng/utils"
 	"github.com/xujiajundd/ycng/utils/logging"
-	"math/rand"
 )
 
 const (
@@ -171,6 +174,7 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 		sm.dedup.Add(string(msg.Payload), true)
 	}
 
+	//Unmarshal
 	signal := NewSignalTemp()
 	err := signal.Unmarshal(msg.Payload)
 	if err != nil {
@@ -178,12 +182,15 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 		return
 	}
 
-	//1.如果invite中sid=0，则回复serverring带一个sid
-	//2.如果session不存在，创建一个session
-	//3.如果1-1mode，透明转发信令
-	//4.如果是多方模式，作为呼叫的一方参与，然后发member_state给所有参与方
-	//5.如果1-1mode时，收到member_op，转为多方模式。
-	//6.signal中的to为session_manager则为多方，如果to是其他帐号，则是1-1
+	/*
+	  1. 1-1和多方第一个人，都必须先请求sid。多方其他人可以通过呼出或者通过邀请呼入，那时已经有sid
+	  2. 收到请求sid时，即创建session，并回复sid
+	  3. 其他信令如果sid为0或者session不存在，都是错误
+	  4. 如果信令的To不是SessionManager，那么是1-1模式
+	  5. 1-1模式下，透明转发信令，但维护参与方的状态
+	  6. 1-1模式下，如果收到member_op，转为多方模式。多方模式不能再转回1-1模式
+	  7. 多方模式下，所有的状态变化，session manager要发member state给所有参与者
+	*/
 
 	if signal.Signal == YCKCallSignalTypeSidRequest {
 		//生成一个与现存不重复的sid
@@ -212,44 +219,258 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 
 	if signal.SessionId == 0 {
 		logging.Logger.Warn("error signal:", signal.Signal, " with sid=0 ", signal.From, signal.To)
-		//return
+		return
 	}
 
 	session := sm.sessions[signal.SessionId]
 	if session == nil {
 		logging.Logger.Warn("session not existed for ", signal)
-		//return
+		return
 	}
 
-
 	if signal.To != SessionManagerUserId {
-		//转发signal
+		//1-1信令，直接转发signal, 维护参与者状态
 		if session.Mode == YCKCallModeMultiple { //进入多方模式后，不能再接受1-1信令
 			logging.Logger.Warn("receive 1-1 signal when in multipart mode")
 			return
+		} else {
+			session.Mode = YCKCallModeOneToOne
 		}
+
 		payload, err := signal.Marshal()
 		if err == nil {
 			msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.To, 0, payload, nil)
 			sm.sendSignalMessage(msg)
 		} else {
 			logging.Logger.Warn("signal marshal error:", err)
+			return
 		}
-	} else {
-		//管理session，member状态
+
+		pf := session.Participants[signal.From]
+		pt := session.Participants[signal.To]
+
 		switch signal.Signal {
 		case YCKCallSignalTypeInvite:
-
+			if pf == nil {
+				pf = NewParticipant(signal.From)
+				session.Participants[signal.From] = pf
+			}
+			if pt == nil {
+				pt = NewParticipant(signal.To)
+				session.Participants[signal.To] = pt
+			}
+			if pf.InState(YCKParticipantStateIdle) {
+				pf.SetState(YCKParticipantStateCalling)
+				pt.SetState(YCKParticipantStateCalled)
+				pf.SetEvent(YCKParticipantEventInvite)
+				pt.SetEvent(YCKParticipantEventRecvInvite)
+			}
 		case YCKCallSignalTypeCancel:
-
+			if pf != nil && (pf.InState(YCKParticipantStateCalling) || pf.InState(YCKParticipantStateIncall)) {
+				pf.SetState(YCKParticipantStateIdle)
+				pt.SetState(YCKParticipantStateIdle)
+				pf.SetEvent(YCKParticipantEventCancel)
+				pt.SetEvent(YCKParticipantEventRecvCancel)
+			}
+		case YCKCallSignalTypeAccept:
+			if pf != nil && pf.InState(YCKParticipantStateCalled) {
+				pf.SetState(YCKParticipantStateIncall)
+				pt.SetState(YCKParticipantStateIncall)
+				pf.SetEvent(YCKParticipantEventAccept)
+				pt.SetEvent(YCKParticipantEventRecvAccept)
+			}
+		case YCKCallSignalTypeReject:
+			if pf != nil && pf.InState(YCKParticipantStateCalled) {
+				pf.SetState(YCKParticipantStateIdle)
+				pt.SetState(YCKParticipantStateIdle)
+				pf.SetEvent(YCKParticipantEventReject)
+				pt.SetEvent(YCKParticipantEventRecvReject)
+			}
+		case YCKCallSignalTypeBusy:
+			if pf != nil && pf.InState(YCKParticipantStateCalled) {
+				pf.SetState(YCKParticipantStateIdle)
+				pt.SetState(YCKParticipantStateIdle)
+				pf.SetEvent(YCKParticipantEventBusy)
+				pt.SetEvent(YCKParticipantEventRecvBusy)
+			}
 		case YCKCallSignalTypeEnd:
-
-		case YCKCallSignalTypeMemberOp:
-			if session.Mode == YCKCallModeOneToOne { //1-1模式时收到多方信令则转入多方模式，并且要通知所有参与方改模式
-				session.Mode = YCKCallModeMultiple
+			if pf != nil {
+				pf.SetState(YCKParticipantStateIdle)
+				pt.SetState(YCKParticipantStateIdle)
+				pf.SetEvent(YCKParticipantEventEnd)
+				pt.SetEvent(YCKParticipantEventRecvEnd)
 			}
 		default:
 
+		}
+	} else {
+		//管理session，member状态
+		if session.Mode == YCKCallModeOneToOne && signal.Signal != YCKCallSignalTypeMemberOp {
+			logging.Logger.Warn("multipart signal ignored in 1-1 mode ", signal.From, signal.To, signal.Signal)
+			return
+		}
+
+		if session.Mode == YCKCallModeUndecided {
+			session.Mode = YCKCallModeMultiple
+		}
+
+		pf := session.Participants[signal.From]
+
+		switch signal.Signal {
+		case YCKCallSignalTypeInvite:
+			//回复ring，accept，设置状态为incall
+			if pf == nil {
+				pf = NewParticipant(signal.From)
+				session.Participants[signal.From] = pf
+			}
+			if pf.InState(YCKParticipantStateIdle) {
+				pf.SetState(YCKParticipantStateCalling)
+				pf.SetEvent(YCKParticipantEventInvite)
+
+				ring := NewSignal(YCKCallSignalTypeRing, SessionManagerUserId, signal.From, session.Sid)
+				payload, err := ring.Marshal()
+				if err == nil {
+					msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.From, 0, payload, nil)
+					sm.sendSignalMessage(msg)
+				} else {
+					logging.Logger.Warn("signal marshal error:", err)
+				}
+
+				accept := NewSignal(YCKCallSignalTypeAccept, SessionManagerUserId, signal.From, session.Sid)
+				payload, err = accept.Marshal()
+				if err == nil {
+					msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.From, 0, payload, nil)
+					sm.sendSignalMessage(msg)
+				} else {
+					logging.Logger.Warn("signal marshal error:", err)
+				}
+				pf.SetState(YCKParticipantStateIncall)
+				pf.SetEvent(YCKParticipantEventRecvAccept)
+			}
+		case YCKCallSignalTypeCancel: //calling这个状态其实并不存在
+			if pf != nil && (pf.InState(YCKParticipantStateCalling) || pf.InState(YCKParticipantStateIncall)) {
+				pf.SetState(YCKParticipantStateIdle)
+				pf.SetEvent(YCKParticipantEventCancel)
+			}
+		case YCKCallSignalTypeEnd:
+			if pf != nil {
+				pf.SetState(YCKParticipantStateIdle)
+				pf.SetEvent(YCKParticipantEventEnd)
+			}
+		case YCKCallSignalTypeAccept:
+			if pf != nil && pf.InState(YCKParticipantStateCalled) {
+				pf.SetState(YCKParticipantStateIncall)
+				pf.SetEvent(YCKParticipantEventAccept)
+			}
+		case YCKCallSignalTypeReject:
+			if pf != nil && pf.InState(YCKParticipantStateCalled) {
+				pf.SetState(YCKParticipantStateIdle)
+				pf.SetEvent(YCKParticipantEventReject)
+			}
+		case YCKCallSignalTypeBusy:
+			if pf != nil && pf.InState(YCKParticipantStateCalled) {
+				pf.SetState(YCKParticipantStateIdle)
+				pf.SetEvent(YCKParticipantEventBusy)
+			}
+		case YCKCallSignalTypeMemberOp:
+			if session.Mode == YCKCallModeOneToOne { //1-1模式时收到多方信令则转入多方模式，并且要通知所有参与方改模式
+				session.Mode = YCKCallModeMultiple
+				logging.Logger.Info("change to multipart mode")
+			}
+
+			op, okOp := signal.Info["op"].(string)
+			members, okMem := signal.Info["members"].([]interface{})
+			if okOp && okMem {
+				if op == "invite" {
+					for _, value := range members {
+						mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
+						if err == nil {
+							p := session.Participants[mem]
+							if p == nil {
+								p = NewParticipant(mem)
+								session.Participants[mem] = p
+							}
+							if p.InState(YCKParticipantStateIdle) {
+								p.SetState(YCKParticipantStateCalled)
+								p.SetEvent(YCKParticipantEventRecvInvite)
+
+								invite := NewSignal(YCKCallSignalTypeInvite, SessionManagerUserId, mem, session.Sid)
+								//TODO:invite将来要加更多内容，比如relays，device info等等
+
+								payload, err := invite.Marshal()
+								if err == nil {
+									msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, mem, 0, payload, nil)
+									sm.sendSignalMessage(msg)
+								} else {
+									logging.Logger.Warn("signal marshal error:", err)
+								}
+							} else {
+								logging.Logger.Warn("member ", p, " not in idle state, cannot invite")
+							}
+						} else {
+							logging.Logger.Warn("parseUint error ", err)
+						}
+					}
+				} else if op == "kick" {
+					for _, value := range members {
+						mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
+						if err == nil {
+							p := session.Participants[mem]
+							if p == nil {
+								p = NewParticipant(mem)
+								session.Participants[mem] = p
+							}
+							if p.InState(YCKParticipantStateIncall) {
+								p.SetState(YCKParticipantStateIdle)
+								p.SetEvent(YCKParticipantEventRecvEnd)
+
+								end := NewSignal(YCKCallSignalTypeEnd, SessionManagerUserId, mem, session.Sid)
+								payload, err := end.Marshal()
+								if err == nil {
+									msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, mem, 0, payload, nil)
+									sm.sendSignalMessage(msg)
+								} else {
+									logging.Logger.Warn("signal marshal error:", err)
+								}
+							} else {
+								logging.Logger.Warn("member ", p, " not in incall state, cannot kick")
+							}
+						} else {
+							logging.Logger.Warn("parseUint error ", err)
+						}
+					}
+				} else {
+					logging.Logger.Warn("unrecognized member op cmd ", op)
+				}
+			} else {
+				logging.Logger.Warn("member op cmd error ", op, members)
+			}
+
+		default:
+
+		}
+
+		//把状态通知所有参与方, 这个消息需要push么？
+		info := make(map[string]interface{})
+		pState := make(map[string]map[string]uint16)
+		for _, p := range session.Participants {
+           key := strconv.FormatUint(p.Uid, 10)
+           value := make(map[string]uint16)
+           value["state"] = p.State
+           value["event"] = p.Event
+           pState[key] = value
+		}
+		info["state"] = pState
+		for _, p := range session.Participants {
+			state := NewSignal(YCKCallSignalTypeMemberState, SessionManagerUserId, p.Uid, session.Sid)
+			state.Info = info
+			payload, err := state.Marshal()
+			if err == nil {
+				msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, p.Uid, 0, payload, nil)
+				sm.sendSignalMessage(msg)
+			} else {
+				logging.Logger.Warn("signal marshal error:", err)
+			}
 		}
 	}
 }
@@ -278,6 +499,7 @@ func (sm *SessionManager) sendSignalMessageByRelays(msg *relay.Message) {
 
 func (sm *SessionManager) sendSignalMessage(msg *relay.Message) {
 	sm.sendSignalMessageByRelays(msg)
+	//todo：通过push平台再发
 }
 
 func (sm *SessionManager) GetRelays() {

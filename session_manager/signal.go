@@ -18,18 +18,19 @@ import (
 const (
 	YCKSignalCategoryCall = 1
 
-	YCKCallSignalTypeInvite      = 1
-	YCKCallSignalTypeSidRequest  = 2
-	YCKCallSignalTypeSidCreated  = 3
-	YCKCallSignalTypeRing        = 4
-	YCKCallSignalTypeServerRing  = 5
-	YCKCallSignalTypeAccept      = 6
-	YCKCallSignalTypeReject      = 7
-	YCKCallSignalTypeCancel      = 8
-	YCKCallSignalTypeEnd         = 9
-	YCKCallSignalTypeBusy        = 10
-	YCKCallSignalTypeMemberOp    = 20
-	YCKCallSignalTypeMemberState = 21
+	YCKCallSignalTypeInvite             = 1
+	YCKCallSignalTypeSidRequest         = 2
+	YCKCallSignalTypeSidCreated         = 3
+	YCKCallSignalTypeRing               = 4
+	YCKCallSignalTypeServerRing         = 5
+	YCKCallSignalTypeAccept             = 6
+	YCKCallSignalTypeReject             = 7
+	YCKCallSignalTypeCancel             = 8
+	YCKCallSignalTypeEnd                = 9
+	YCKCallSignalTypeBusy               = 10
+	YCKCallSignalTypeMemberOp           = 20
+	YCKCallSignalTypeMemberState        = 21
+	YCKCallSignalTypeMemberStateRequest = 22
 )
 
 type Signal struct {
@@ -76,5 +77,5 @@ func (s *Signal) Unmarshal(data []byte) error {
 }
 
 func (s *Signal) Marshal() ([]byte, error) {
-    return json.Marshal(s)
+	return json.Marshal(s)
 }

@@ -173,6 +173,15 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 	//回复
 	msg.MsgType = UdpMessageTypeTurnRegReceived
 	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), participant.UdpAddr)
+
+	//bugfix：将其他participant的pengingMsg检查一遍，如果有上次遗留的则清除。
+	for _, p := range session.Participants {
+		if p.PendingMsg != nil {
+			if p.PendingMsg.From == msg.From {
+				p.PendingMsg = nil
+			}
+		}
+	}
 }
 
 func (s *Service) handleMessageAudioStream(msg *Message) {

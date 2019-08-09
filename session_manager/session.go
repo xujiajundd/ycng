@@ -39,6 +39,8 @@ type Participant struct {
 	State         uint16
 	Event         uint16
 	LastStateTime time.Time
+	Timeout      *time.Timer
+	HasChange     bool
 	//option,info,device info之类信息需要补充
 }
 
@@ -47,12 +49,17 @@ func NewParticipant(uid uint64) *Participant {
 		Uid:           uid,
 		State:         YCKParticipantStateIdle,
 		LastStateTime: time.Now(),
+		HasChange:     false,
 	}
 	return p
 }
 
 func (p *Participant) SetState(state uint16) {
 	p.State = state
+	p.HasChange = true
+	if p.Timeout != nil {
+		p.Timeout.Stop()
+	}
 }
 
 func (p *Participant) InState(state uint16) bool {
@@ -63,12 +70,17 @@ func (p *Participant) SetEvent(event uint16) {
 	p.Event = event
 }
 
+func (p *Participant) setCallingTimeout(duration time.Duration, f func()) {
+	p.Timeout = time.AfterFunc(duration, f)
+}
+
 type Session struct {
 	Sid            uint64
 	Mode           int
 	Participants   map[uint64]*Participant
 	Relays         []string
 	LastActiveTime time.Time
+	Nickname       string   //这个多方通话的昵称，在invite其他member的信令消息中应该需要用到
 }
 
 func NewSession(sid uint64) *Session {

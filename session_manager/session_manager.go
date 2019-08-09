@@ -224,7 +224,7 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 
 	session := sm.sessions[signal.SessionId]
 	if session == nil {
-		logging.Logger.Warn("session not existed for ", signal)
+		logging.Logger.Warn("session not existed for id:", signal.SessionId)
 		return
 	}
 
@@ -305,9 +305,13 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 		}
 	} else {
 		//管理session，member状态
-		if session.Mode == YCKCallModeOneToOne && signal.Signal != YCKCallSignalTypeMemberOp {
-			logging.Logger.Warn("multipart signal ignored in 1-1 mode ", signal.From, signal.To, signal.Signal)
-			return
+		if session.Mode == YCKCallModeOneToOne {
+			if signal.Signal != YCKCallSignalTypeMemberOp {
+				logging.Logger.Warn("multipart signal ignored in 1-1 mode ", signal.From, signal.To, signal.Signal)
+				return
+			} else {
+				session.Mode = YCKCallModeMultiple
+			}
 		}
 
 		if session.Mode == YCKCallModeUndecided {
@@ -346,6 +350,10 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 				}
 				pf.SetState(YCKParticipantStateIncall)
 				pf.SetEvent(YCKParticipantEventRecvAccept)
+
+				if signal.Info["op"] != nil && signal.Info["members"] != nil {
+					sm.processSignalOp(signal, session)
+				}
 			}
 		case YCKCallSignalTypeCancel: //calling这个状态其实并不存在
 			if pf != nil && (pf.InState(YCKParticipantStateCalling) || pf.InState(YCKParticipantStateIncall)) {
@@ -377,91 +385,120 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 				session.Mode = YCKCallModeMultiple
 				logging.Logger.Info("change to multipart mode")
 			}
+			if signal.Info["op"] != nil && signal.Info["members"] != nil {
+				sm.processSignalOp(signal, session)
+			}
+		default:
+			return
+		}
 
-			op, okOp := signal.Info["op"].(string)
-			members, okMem := signal.Info["members"].([]interface{})
-			if okOp && okMem {
-				if op == "invite" {
-					for _, value := range members {
-						mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
-						if err == nil {
-							p := session.Participants[mem]
-							if p == nil {
-								p = NewParticipant(mem)
-								session.Participants[mem] = p
-							}
-							if p.InState(YCKParticipantStateIdle) {
-								p.SetState(YCKParticipantStateCalled)
-								p.SetEvent(YCKParticipantEventRecvInvite)
+		sm.notifyMemberStateChange(session)
+	}
+}
 
-								invite := NewSignal(YCKCallSignalTypeInvite, SessionManagerUserId, mem, session.Sid)
-								//TODO:invite将来要加更多内容，比如relays，device info等等
-
-								payload, err := invite.Marshal()
-								if err == nil {
-									msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, mem, 0, payload, nil)
-									sm.sendSignalMessage(msg)
-								} else {
-									logging.Logger.Warn("signal marshal error:", err)
-								}
-							} else {
-								logging.Logger.Warn("member ", p, " not in idle state, cannot invite")
-							}
-						} else {
-							logging.Logger.Warn("parseUint error ", err)
-						}
+func (sm *SessionManager) processSignalOp(signal *Signal, session *Session) {
+	op, okOp := signal.Info["op"].(string)
+	members, okMem := signal.Info["members"].([]interface{})
+	if okOp && okMem {
+		if op == "invite" {
+			for _, value := range members {
+				mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
+				if err == nil {
+					p := session.Participants[mem]
+					if p == nil {
+						p = NewParticipant(mem)
+						session.Participants[mem] = p
 					}
-				} else if op == "kick" {
-					for _, value := range members {
-						mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
-						if err == nil {
-							p := session.Participants[mem]
-							if p == nil {
-								p = NewParticipant(mem)
-								session.Participants[mem] = p
-							}
-							if p.InState(YCKParticipantStateIncall) {
-								p.SetState(YCKParticipantStateIdle)
-								p.SetEvent(YCKParticipantEventRecvEnd)
+					if p.InState(YCKParticipantStateIdle) {
+						p.SetState(YCKParticipantStateCalled)
+						p.SetEvent(YCKParticipantEventRecvInvite)
 
-								end := NewSignal(YCKCallSignalTypeEnd, SessionManagerUserId, mem, session.Sid)
-								payload, err := end.Marshal()
-								if err == nil {
-									msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, mem, 0, payload, nil)
-									sm.sendSignalMessage(msg)
-								} else {
-									logging.Logger.Warn("signal marshal error:", err)
-								}
-							} else {
-								logging.Logger.Warn("member ", p, " not in incall state, cannot kick")
-							}
+						invite := NewSignal(YCKCallSignalTypeInvite, SessionManagerUserId, mem, session.Sid)
+						//TODO:invite将来要加更多内容，比如relays，device info等等
+
+						payload, err := invite.Marshal()
+						if err == nil {
+							msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, mem, 0, payload, nil)
+							sm.sendSignalMessage(msg)
 						} else {
-							logging.Logger.Warn("parseUint error ", err)
+							logging.Logger.Warn("signal marshal error:", err)
 						}
+
+						//60秒后timeout, 这个搞法需要测试下是否可行。。。
+						p.setCallingTimeout(60*time.Second, func() {
+							if p.InState(YCKParticipantStateCalled) {
+								p.SetState(YCKParticipantStateIdle)
+								p.SetEvent(YCKParticipantEventTimout)
+								sm.notifyMemberStateChange(session)
+							}
+						})
+
+					} else {
+						logging.Logger.Warn("member ", p.Uid, " not in idle state, cannot invite")
 					}
 				} else {
-					logging.Logger.Warn("unrecognized member op cmd ", op)
+					logging.Logger.Warn("parseUint error ", err)
 				}
-			} else {
-				logging.Logger.Warn("member op cmd error ", op, members)
 			}
+		} else if op == "kick" {
+			for _, value := range members {
+				mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
+				if err == nil {
+					p := session.Participants[mem]
+					if p == nil {
+						p = NewParticipant(mem)
+						session.Participants[mem] = p
+					}
+					if p.InState(YCKParticipantStateIncall) {
+						p.SetState(YCKParticipantStateIdle)
+						p.SetEvent(YCKParticipantEventRecvEnd)
 
-		default:
-
+						end := NewSignal(YCKCallSignalTypeEnd, SessionManagerUserId, mem, session.Sid)
+						payload, err := end.Marshal()
+						if err == nil {
+							msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, mem, 0, payload, nil)
+							sm.sendSignalMessage(msg)
+						} else {
+							logging.Logger.Warn("signal marshal error:", err)
+						}
+					} else {
+						logging.Logger.Warn("member ", p, " not in incall state, cannot kick")
+					}
+				} else {
+					logging.Logger.Warn("parseUint error ", err)
+				}
+			}
+		} else {
+			logging.Logger.Warn("unrecognized member op cmd ", op)
 		}
+	} else {
+		logging.Logger.Warn("member op cmd error ", op, members)
+	}
+}
 
-		//把状态通知所有参与方, 这个消息需要push么？
-		info := make(map[string]interface{})
-		pState := make(map[string]map[string]uint16)
-		for _, p := range session.Participants {
-           key := strconv.FormatUint(p.Uid, 10)
-           value := make(map[string]uint16)
-           value["state"] = p.State
-           value["event"] = p.Event
-           pState[key] = value
+func (sm *SessionManager) notifyMemberStateChange(session *Session) {
+
+	//把状态通知所有参与方, 这个消息需要push么？
+	info := make(map[string]interface{})
+	pState := make(map[uint64]map[string]uint16)
+	pChange := make([]uint64, 0)
+	for _, p := range session.Participants {
+		key := p.Uid //strconv.FormatUint(p.Uid, 10)
+		value := make(map[string]uint16)
+		value["state"] = p.State
+		value["event"] = p.Event
+		pState[key] = value
+		if p.HasChange {
+			pChange = append(pChange, p.Uid)
+			p.HasChange = false
 		}
-		info["state"] = pState
-		for _, p := range session.Participants {
+	}
+	info["states"] = pState
+	info["change"] = pChange
+
+	//是不是只需要发给incall的人？
+	for _, p := range session.Participants {
+		if p.InState(YCKParticipantStateIncall) {
 			state := NewSignal(YCKCallSignalTypeMemberState, SessionManagerUserId, p.Uid, session.Sid)
 			state.Info = info
 			payload, err := state.Marshal()

@@ -70,12 +70,14 @@ func (s *Signal) Unmarshal(data []byte) error {
 	if err != nil {
 		return err
 	}
-	logging.Logger.Info(string(data))
-	logging.Logger.Info(s, s.From, s.To, s.Option, s.Info)
+//	logging.Logger.Info(string(data))
+	logging.Logger.Info("receive:", s)
 
 	return nil
 }
 
 func (s *Signal) Marshal() ([]byte, error) {
-	return json.Marshal(s)
+	data, err := json.Marshal(s)
+	logging.Logger.Info("send:", string(data))
+	return data, err
 }

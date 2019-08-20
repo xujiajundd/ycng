@@ -25,6 +25,7 @@ const (
 	UdpMessageTypeTurnReg           = 1  //客户端注册一个session的请求
 	UdpMessageTypeTurnRegReceived   = 2  //服务器返回请求收到
 	UdpMessageTypeTurnUnReg         = 3  //客户端注销session注册
+	UdpMessageTypeTurnRegNoExist    = 4  //session未注册
 	UdpMessageTypeAudioStream       = 20 //音频包
 	UdpMessageTypeVideoStream       = 30 //视频包
 	UdpMessageTypeVideoStreamIFrame = 31 //视频i帧
@@ -113,8 +114,8 @@ func (m *Message) Unmarshal(data []byte) error {
 	len := len(data)
 	p := 0
 
-	if len < 24 {
-		return errors.New("incorrect packet, len < 24")
+	if len < 26 {
+		return errors.New("incorrect packet, len < 26")
 	}
 	m.Tseq = int16(binary.BigEndian.Uint16(data[p : p+2]))
 	p += 2

@@ -31,6 +31,8 @@ const (
 type SessionManager struct {
 	sessions     map[uint64]*Session
 	relays       []string
+	pushkit      *Pushkit
+	userTokens   map[uint64]string
 	saddr        string
 	conn         *net.UDPConn
 	subscriberCh chan *relay.ReceivedPacket
@@ -53,6 +55,8 @@ func NewSessionManager() *SessionManager {
 		ticker:       time.NewTicker(200 * time.Second),
 	}
 	sm.GetRelays()
+	sm.pushkit = NewPushkit()
+	sm.userTokens = make(map[uint64]string)
 	return sm
 }
 
@@ -166,6 +170,11 @@ func (sm *SessionManager) handleTicker(now time.Time) {
 	//清理已经结束的session，1-1有收到过end，多方发出或收到所有的end。或者sm主动轮询参与者？
 }
 
+//func (sm *SessionManager) handleMessageUserToken(msg *relay.Message) {
+//	sm.userTokens[msg.From] = msg.Payload
+//	logging.Logger.Info("voip token:", string(msg.Payload), " registered for user:", msg.From)
+//}
+
 func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 	//去重
 	if sm.dedup.Contains(string(msg.Payload)) {
@@ -180,6 +189,12 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 	if err != nil {
 		logging.Logger.Warn("signal unmarshal error:", err)
 		return
+	}
+
+	if (signal.Signal == YCKCallSignalTypeVoipTokenReg) {
+		sm.userTokens[signal.From] = signal.Info["token"].(string)
+		logging.Logger.Info("voip token:", signal.Info["token"].(string), " registered for user:", signal.From)
+		return;
 	}
 
 	/*
@@ -210,7 +225,7 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 		payload, err := sid_created.Marshal()
 		if err == nil {
 			msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.From, 0, payload, nil)
-			sm.sendSignalMessage(msg)
+			sm.sendSignalMessage(msg, false)
 		} else {
 			logging.Logger.Warn("signal marshal error:", err)
 		}
@@ -230,7 +245,9 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 
 	if signal.To != SessionManagerUserId {
 		//1-1信令，直接转发signal, 维护参与者状态
-		if session.Mode == YCKCallModeMultiple { //进入多方模式后，不能再接受1-1信令
+		if session.Mode == YCKCallModeMultiple {
+			//进入多方模式后，不能再接受1-1信令
+			//todo：但是，如果有member还没收到state切换到多方状态时，有挂断等单方信令。还是需要处理？
 			logging.Logger.Warn("receive 1-1 signal when in multipart mode")
 			return
 		} else {
@@ -240,7 +257,11 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 		payload, err := signal.Marshal()
 		if err == nil {
 			msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.To, 0, payload, nil)
-			sm.sendSignalMessage(msg)
+			if signal.Signal == YCKCallSignalTypeInvite || signal.Signal == YCKCallSignalTypeCancel {
+				sm.sendSignalMessage(msg, true)
+			} else {
+				sm.sendSignalMessage(msg, false)
+			}
 		} else {
 			logging.Logger.Warn("signal marshal error:", err)
 			return
@@ -335,7 +356,7 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 				payload, err := ring.Marshal()
 				if err == nil {
 					msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.From, 0, payload, nil)
-					sm.sendSignalMessage(msg)
+					sm.sendSignalMessage(msg, false)
 				} else {
 					logging.Logger.Warn("signal marshal error:", err)
 				}
@@ -344,7 +365,7 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 				payload, err = accept.Marshal()
 				if err == nil {
 					msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.From, 0, payload, nil)
-					sm.sendSignalMessage(msg)
+					sm.sendSignalMessage(msg, false)
 				} else {
 					logging.Logger.Warn("signal marshal error:", err)
 				}
@@ -419,7 +440,7 @@ func (sm *SessionManager) processSignalOp(signal *Signal, session *Session) {
 						payload, err := invite.Marshal()
 						if err == nil {
 							msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, mem, 0, payload, nil)
-							sm.sendSignalMessage(msg)
+							sm.sendSignalMessage(msg, true)
 						} else {
 							logging.Logger.Warn("signal marshal error:", err)
 						}
@@ -457,7 +478,7 @@ func (sm *SessionManager) processSignalOp(signal *Signal, session *Session) {
 						payload, err := end.Marshal()
 						if err == nil {
 							msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, mem, 0, payload, nil)
-							sm.sendSignalMessage(msg)
+							sm.sendSignalMessage(msg, false)
 						} else {
 							logging.Logger.Warn("signal marshal error:", err)
 						}
@@ -481,22 +502,20 @@ func (sm *SessionManager) notifyMemberStateChange(session *Session) {
 	//把状态通知所有参与方, 这个消息需要push么？
 	info := make(map[string]interface{})
 	pState := make(map[uint64]map[string]uint16)
-	pChange := make([]uint64, 0)
 	for _, p := range session.Participants {
 		key := p.Uid //strconv.FormatUint(p.Uid, 10)
 		value := make(map[string]uint16)
 		value["state"] = p.State
 		value["event"] = p.Event
-		pState[key] = value
 		if p.HasChange {
-			pChange = append(pChange, p.Uid)
+			value["change"] = 1
 			p.HasChange = false
 		}
+		pState[key] = value
 	}
 	info["states"] = pState
-	info["change"] = pChange
 
-	//是不是只需要发给incall的人？
+	//是不是只需要发给incall的人？如果有人需要查询怎么办？
 	for _, p := range session.Participants {
 		if p.InState(YCKParticipantStateIncall) {
 			state := NewSignal(YCKCallSignalTypeMemberState, SessionManagerUserId, p.Uid, session.Sid)
@@ -504,7 +523,7 @@ func (sm *SessionManager) notifyMemberStateChange(session *Session) {
 			payload, err := state.Marshal()
 			if err == nil {
 				msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, p.Uid, 0, payload, nil)
-				sm.sendSignalMessage(msg)
+				sm.sendSignalMessage(msg, false)
 			} else {
 				logging.Logger.Warn("signal marshal error:", err)
 			}
@@ -534,10 +553,29 @@ func (sm *SessionManager) sendSignalMessageByRelays(msg *relay.Message) {
 	}
 }
 
-func (sm *SessionManager) sendSignalMessage(msg *relay.Message) {
+func (sm *SessionManager) sendSignalMessageByPushkit(msg *relay.Message) {
+    //通过msg.to，得到其token
+    token := sm.userTokens[msg.To]
+
+    //msg.payload直接发送，本来就是json串。但这样push只能接收signal了。。。不大利于将来扩展
+    payload := msg.Payload
+
+    if len(token)>0 && payload != nil {
+		sm.pushkit.Push(token, payload)
+		logging.Logger.Info("push to:", msg.To, " with token:", token)
+	} else {
+		logging.Logger.Warn("incorrect token or payload:", token, payload)
+	}
+}
+
+func (sm *SessionManager) sendSignalMessage(msg *relay.Message, needPush bool) {
 	sm.sendSignalMessageByRelays(msg)
 	//todo：通过push平台再发
+	if (needPush) {
+		sm.sendSignalMessageByPushkit(msg)
+	}
 }
+
 
 func (sm *SessionManager) GetRelays() {
 	sm.relays = []string{

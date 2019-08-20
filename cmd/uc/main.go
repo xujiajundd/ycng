@@ -7,3 +7,6 @@
 
 package main
 
+func main() {
+
+}

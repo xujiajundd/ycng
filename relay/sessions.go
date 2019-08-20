@@ -18,7 +18,7 @@ import (
    同步session管理通话，异步session管理文件传输
    通话结束，或无活动超时，session close，文件传输的异步session全部成员下载完成或按超时close
 
-2. Session有一个32byteid，和一个8byte short id。
+2. Session有一个8byte id。
    Session有参与者，通话中参与者就是各方，文件传输参与者就是文件接收者。
    异步Session有文件缓存地址
 
@@ -47,15 +47,15 @@ type Participant struct {
 }
 
 type Session struct {
-	Id           []byte
-	IdShort      uint64
+	//Id           []byte
+	Id           uint64
 	Type         int
 	Participants map[uint64]*Participant
 }
 
 func NewSession(id uint64) *Session {
 	session := &Session{
-		IdShort: id,
+		Id: id,
 	}
 
 	return session
@@ -73,23 +73,3 @@ func NewSessions() *Sessions {
 	return s
 }
 
-func (s *Sessions) AddSession(session *Session) {
-
-}
-
-func (s *Sessions) FindSession(sid uint64, from uint64) *Session {
-	ss := s.sessions[sid]
-	if ss == nil || len(ss) == 0 {
-		return nil
-	}
-	if len(ss) == 1 {
-		return ss[0]
-	} else {
-		for _, s := range ss {
-			if s.Participants[from] != nil {
-				return s
-			}
-		}
-		return nil
-	}
-}

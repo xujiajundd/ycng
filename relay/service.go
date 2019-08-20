@@ -121,19 +121,19 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 	case UdpMessageTypeTurnRegReceived: //只有客户端会收到这个
 
 	case UdpMessageTypeAudioStream:
-		s.handleMessageAudioStream(msg)
+		s.handleMessageAudioStream(msg, packet)
 
 	case UdpMessageTypeVideoStream:
-		s.handleMessageVideoStream(msg)
+		s.handleMessageVideoStream(msg, packet)
 
 	case UdpMessageTypeVideoStreamIFrame:
-		s.handleMessageVideoStreamIFrame(msg)
+		s.handleMessageVideoStreamIFrame(msg, packet)
 
 	case UdpMessageTypeVideoNack:
-		s.handleMessageVideoNack(msg)
+		s.handleMessageVideoNack(msg, packet)
 
 	case UdpMessageTypeVideoAskForIFrame:
-		s.handleMessageVideoASkForIFrame(msg)
+		s.handleMessageVideoASkForIFrame(msg, packet)
 
 	case UdpMessageTypeVideoOnlyIFrame:
 
@@ -184,11 +184,10 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 	}
 }
 
-func (s *Service) handleMessageAudioStream(msg *Message) {
+func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket) {
 	//logging.Logger.Info("received audio From ", msg.From, " To ", msg.To)
 
 	session := s.sessions[msg.To]
-
 	if session != nil {
 		participant := session.Participants[msg.From]
 		if participant != nil {
@@ -210,23 +209,27 @@ func (s *Service) handleMessageAudioStream(msg *Message) {
 			}
 		} else {
 			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			s.askForReTurnReg(msg, packet)
 		}
 	} else {
 		logging.Logger.Info("session not existed", msg.To)
+		s.askForReTurnReg(msg, packet)
 	}
 }
 
-func (s *Service) handleMessageVideoStream(msg *Message) {
+func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket) {
 	//logging.Logger.Info("received video From ", msg.From, " To ", msg.To)
 
 	session := s.sessions[msg.To]
-
 	if session != nil {
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
 			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
 			for _, p := range session.Participants {
+				if msg.Dest != 0 && p.Id != msg.Dest {
+					continue
+				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
@@ -242,23 +245,27 @@ func (s *Service) handleMessageVideoStream(msg *Message) {
 			}
 		} else {
 			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			s.askForReTurnReg(msg, packet)
 		}
 	} else {
 		logging.Logger.Info("session not existed", msg.To)
+		s.askForReTurnReg(msg, packet)
 	}
 }
 
-func (s *Service) handleMessageVideoStreamIFrame(msg *Message) {
-	logging.Logger.Info("received video iframe From ", msg.From, " To ", msg.To)
+func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedPacket) {
+	//logging.Logger.Info("received video iframe From ", msg.From, " To ", msg.To)
 
 	session := s.sessions[msg.To]
-
 	if session != nil {
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
 			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
 			for _, p := range session.Participants {
+				if msg.Dest != 0 && p.Id != msg.Dest {
+					continue
+				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
@@ -274,13 +281,15 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message) {
 			}
 		} else {
 			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			s.askForReTurnReg(msg, packet)
 		}
 	} else {
 		logging.Logger.Info("session not existed", msg.To)
+		s.askForReTurnReg(msg, packet)
 	}
 }
 
-func (s *Service) handleMessageVideoASkForIFrame(msg *Message) {
+func (s *Service) handleMessageVideoASkForIFrame(msg *Message, packet *ReceivedPacket) {
 	logging.Logger.Info("received ask for iframe From ", msg.From, " To ", msg.To, " Dest ", msg.Dest)
 
 	session := s.sessions[msg.To]
@@ -290,19 +299,24 @@ func (s *Service) handleMessageVideoASkForIFrame(msg *Message) {
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
 			for _, p := range session.Participants {
+				if msg.Dest != 0 && p.Id != msg.Dest {
+					continue
+				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
 					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 				}
 			}
 		} else {
 			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			s.askForReTurnReg(msg, packet)
 		}
 	} else {
 		logging.Logger.Info("session not existed ", msg.To)
+		s.askForReTurnReg(msg, packet)
 	}
 }
 
-func (s *Service) handleMessageVideoNack(msg *Message) {
+func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 	logging.Logger.Info("received nack From ", msg.From, " To ", msg.To, " Dest ", msg.Dest)
 
 	session := s.sessions[msg.To]
@@ -312,16 +326,27 @@ func (s *Service) handleMessageVideoNack(msg *Message) {
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
 			for _, p := range session.Participants {
+				if msg.Dest != 0 && p.Id != msg.Dest {
+					continue
+				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
 					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 				}
 			}
 		} else {
 			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			s.askForReTurnReg(msg, packet)
 		}
 	} else {
 		logging.Logger.Info("session not existed ", msg.To)
+		s.askForReTurnReg(msg, packet)
 	}
+}
+
+func(s *Service)askForReTurnReg(msg *Message, packet *ReceivedPacket){
+	newMsg := NewMessage(UdpMessageTypeTurnRegNoExist, msg.From, msg.To, msg.Dest, nil, nil)
+	newMsg.Tid = msg.Tid
+	s.udp_server.SendPacket(newMsg.ObfuscatedDataOfMessage(), packet.FromUdpAddr)
 }
 
 func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {

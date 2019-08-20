@@ -31,6 +31,8 @@ const (
 	YCKCallSignalTypeMemberOp           = 20
 	YCKCallSignalTypeMemberState        = 21
 	YCKCallSignalTypeMemberStateRequest = 22
+
+	YCKCallSignalTypeVoipTokenReg       = 100   //严格来讲，这个不是一个call信令，姑且用之。。。
 )
 
 type Signal struct {
@@ -41,8 +43,8 @@ type Signal struct {
 	From      uint64                 `json:"f"`
 	To        uint64                 `json:"t"`
 	Ttl       uint32                 `json:"l"`
-	Option    map[string]interface{} `json:"o"`
-	Info      map[string]interface{} `json:"i"`
+	Option    map[string]interface{} `json:"o,omitempty"`
+	Info      map[string]interface{} `json:"i,omitempty"`
 }
 
 func NewSignalTemp() *Signal {
@@ -70,7 +72,7 @@ func (s *Signal) Unmarshal(data []byte) error {
 	if err != nil {
 		return err
 	}
-//	logging.Logger.Info(string(data))
+	logging.Logger.Info(string(data))
 	logging.Logger.Info("receive:", s)
 
 	return nil

@@ -349,6 +349,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
              			nmsgType = UdpMessageTypeVideoStreamIFrame
 					}
              		nmsg := NewMessage(uint8(nmsgType), msg.Dest, session.Id, msg.From, packet, nil)
+             		nmsg.Tid = msg.Tid
 					if participant.PendingMsg == nil {
 						participant.PendingMsg = nmsg
 					} else {

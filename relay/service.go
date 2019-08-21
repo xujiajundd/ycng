@@ -15,6 +15,7 @@ import (
 
 	"github.com/xujiajundd/ycng/utils/logging"
 	"time"
+	"github.com/xujiajundd/ycng/utils"
 )
 
 type Service struct {
@@ -165,10 +166,15 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 	}
 
 	//当前用户注册到session
-	participant := &Participant{Id: msg.From, UdpAddr: packet.FromUdpAddr, TcpConn: nil}
+	participant := session.Participants[msg.From]
+	if participant == nil {
+		participant = &Participant{Id: msg.From, UdpAddr: packet.FromUdpAddr, TcpConn: nil}
+		participant.Metrics = NewMetrics()
+		participant.VideoQueueOut = NewQueueOut()
+		session.Participants[participant.Id] = participant
+	}
+	participant.UdpAddr = packet.FromUdpAddr
 	participant.LastActiveTime = time.Now()
-	participant.Metrics = NewMetrics()
-	session.Participants[participant.Id] = participant
 
 	//回复
 	msg.MsgType = UdpMessageTypeTurnRegReceived
@@ -226,6 +232,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
 			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
+			participant.VideoQueueOut.AddItem(false, msg.Payload)
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
 					continue
@@ -262,6 +269,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
 			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
+			participant.VideoQueueOut.AddItem(true, msg.Payload)
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
 					continue
@@ -325,12 +333,44 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			for _, p := range session.Participants {
-				if msg.Dest != 0 && p.Id != msg.Dest {
-					continue
+			//解nack包
+			nack := msg.Payload
+			dest := session.Participants[msg.Dest]
+			if dest == nil {
+				return;
+			}
+			n_tries, isIFrame, packets := dest.VideoQueueOut.ProcessNack(nack)
+			//从Dest的QueueOut中查找是否可以响应nack
+             if packets != nil && len(packets) > 0 {
+             	for i:=0; i<len(packets); i++ {
+             		packet := packets[i]
+             		nmsgType := UdpMessageTypeVideoStream
+             		if isIFrame {
+             			nmsgType = UdpMessageTypeVideoStreamIFrame
+					}
+             		nmsg := NewMessage(uint8(nmsgType), msg.Dest, session.Id, msg.From, packet, nil)
+					if participant.PendingMsg == nil {
+						participant.PendingMsg = nmsg
+					} else {
+						participant.PendingMsg.Tseq = participant.Tseq
+						nmsg.Tseq = participant.Tseq
+						participant.Tseq++
+						s.udp_server.SendPacket(participant.PendingMsg.ObfuscatedDataOfMessage(), participant.UdpAddr)
+						s.udp_server.SendPacket(nmsg.ObfuscatedDataOfMessage(), participant.UdpAddr)
+						participant.PendingMsg = nil
+					}
 				}
-				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
-					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+			 }
+
+			//如果是tries>0且QueueOut中无响应，则发给Dest处理
+			if n_tries > 1 && len(packets) == 0 {
+				for _, p := range session.Participants {
+					if msg.Dest != 0 && p.Id != msg.Dest {
+						continue
+					}
+					if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
+						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+					}
 				}
 			}
 		} else {
@@ -411,4 +451,6 @@ func (s *Service) handleTicker(now time.Time) {
 			logging.Logger.Info("    reg user:", ukey)
 		}
 	}
+
+	utils.PrintMemUsage()
 }

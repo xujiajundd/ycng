@@ -44,6 +44,14 @@ const (
 	UdpMessageFlagDest  = 1 << 1
 )
 
+const (
+	UdpMessageExtraTypeMetrix = 1
+
+	YCKMetrixDataTypeBandwidthUp          = 10
+	YCKMetrixDataTypeLossrateUp           = 11
+)
+
+
 type Message struct {
 	Tseq      int16
 	Tid       byte

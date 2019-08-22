@@ -198,7 +198,10 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
+			ok, data := participant.Metrics.Process(msg)
+			if ok {
+				participant.PendingExtra = data
+			}
 			for _, p := range session.Participants {
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
@@ -207,6 +210,11 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 						p.PendingMsg.Tseq = p.Tseq
 						msg.Tseq = p.Tseq
 						p.Tseq++
+						if p.PendingExtra != nil && msg.Extra == nil {
+							msg.Extra = p.PendingExtra
+							msg.SetFlag(UdpMessageFlagExtra)
+							p.PendingExtra = nil
+						}
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						p.PendingMsg = nil
@@ -231,7 +239,10 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
+			ok, data := participant.Metrics.Process(msg)
+			if ok {
+				participant.PendingExtra = data
+			}
 			participant.VideoQueueOut.AddItem(false, msg.Payload)
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
@@ -244,6 +255,11 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 						p.PendingMsg.Tseq = p.Tseq
 						msg.Tseq = p.Tseq
 						p.Tseq++
+						if p.PendingExtra != nil && msg.Extra == nil{
+							msg.Extra = p.PendingExtra
+							msg.SetFlag(UdpMessageFlagExtra)
+							p.PendingExtra = nil
+						}
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						p.PendingMsg = nil
@@ -268,7 +284,10 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			participant.Metrics.AddEntry(msg.Tid, msg.Tseq, msg.NetTrafficSize())
+			ok, data := participant.Metrics.Process(msg)
+			if ok {
+				participant.PendingExtra = data
+			}
 			participant.VideoQueueOut.AddItem(true, msg.Payload)
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
@@ -281,6 +300,11 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 						p.PendingMsg.Tseq = p.Tseq
 						msg.Tseq = p.Tseq
 						p.Tseq++
+						if p.PendingExtra != nil && msg.Extra == nil{
+							msg.Extra = p.PendingExtra
+							msg.SetFlag(UdpMessageFlagExtra)
+							p.PendingExtra = nil
+						}
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						p.PendingMsg = nil
@@ -442,9 +466,8 @@ func (s *Service) handleTicker(now time.Time) {
 		logging.Logger.Infoln("details:")
 		for skey, session := range s.sessions {
 			logging.Logger.Info("    session: ", skey)
-			for pkey, participant := range session.Participants {
+			for pkey, _ := range session.Participants {
 				logging.Logger.Info("       participant:", pkey)
-				participant.Metrics.Process() //这个临时放在这里，正常情况要放在反馈的地方。
 			}
 		}
 

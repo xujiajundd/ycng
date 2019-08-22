@@ -99,15 +99,17 @@ func (m *Metrics) Process(msg *Message) (ok bool, data []byte) {
 		logging.Logger.Info(msg.From, " 应收包:", pShould, " 实收包:", pRecv, " 重复:", rept, " 带宽:", bandwidth)
 
 		if pShould > 0 && bandwidth > 0 {
-           data = make([]byte, 15)
+           data = make([]byte, 17)
            data[0] = UdpMessageExtraTypeMetrix
            data[1] = YCKMetrixDataTypeBandwidthUp
-           binary.BigEndian.PutUint16(data[2:4], 4)
-           binary.BigEndian.PutUint32(data[4:8], uint32(bandwidth))
-           data[8] = YCKMetrixDataTypeLossrateUp
-           binary.BigEndian.PutUint16(data[9:11], 4)
-           binary.BigEndian.PutUint16(data[11:13], uint16(pShould))
-           binary.BigEndian.PutUint16(data[13:15], uint16(pRecv))
+           binary.BigEndian.PutUint16(data[2:4], 5)
+           data[4] = msg.Tid
+           binary.BigEndian.PutUint32(data[5:9], uint32(bandwidth))
+           data[9] = YCKMetrixDataTypeLossrateUp
+           binary.BigEndian.PutUint16(data[10:12], 5)
+           data[12] = msg.Tid
+           binary.BigEndian.PutUint16(data[13:15], uint16(pShould))
+           binary.BigEndian.PutUint16(data[15:17], uint16(pRecv))
            return true, data
 		}
 	}

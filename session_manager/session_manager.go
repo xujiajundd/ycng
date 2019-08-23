@@ -32,7 +32,7 @@ type SessionManager struct {
 	sessions     map[uint64]*Session
 	relays       []string
 	pushkit      *Pushkit
-	userTokens   map[uint64]string
+	userTokens   map[uint64]*PushToken
 	saddr        string
 	conn         *net.UDPConn
 	subscriberCh chan *relay.ReceivedPacket
@@ -56,7 +56,7 @@ func NewSessionManager() *SessionManager {
 	}
 	sm.GetRelays()
 	sm.pushkit = NewPushkit()
-	sm.userTokens = make(map[uint64]string)
+	sm.userTokens = make(map[uint64]*PushToken)
 	return sm
 }
 
@@ -192,7 +192,8 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 	}
 
 	if (signal.Signal == YCKCallSignalTypeVoipTokenReg) {
-		sm.userTokens[signal.From] = signal.Info["token"].(string)
+		ptoken := NewPushToken(signal.From, signal.Info["token"].(string), signal.Info["platform"].(string))
+		sm.userTokens[signal.From] = ptoken
 		logging.Logger.Info("voip token:", signal.Info["token"].(string), " registered for user:", signal.From)
 		return;
 	}
@@ -560,9 +561,11 @@ func (sm *SessionManager) sendSignalMessageByPushkit(msg *relay.Message) {
     //msg.payload直接发送，本来就是json串。但这样push只能接收signal了。。。不大利于将来扩展
     payload := msg.Payload
 
-    if len(token)>0 && payload != nil {
-		sm.pushkit.Push(token, payload)
-		logging.Logger.Info("push to:", msg.To, " with token:", token)
+    if len(token.Token)>0 && payload != nil {
+    	if token.Platform == "ios" {
+			sm.pushkit.Push(token.Token, payload)
+			logging.Logger.Info("push to:", msg.To, " with token:", token)
+		}
 	} else {
 		logging.Logger.Warn("incorrect token or payload:", token, payload)
 	}

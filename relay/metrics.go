@@ -69,15 +69,22 @@ func (m *Metrics) Process(msg *Message) (ok bool, data []byte) {
 			}
 
 			for q := p + 1; q < p+10 && q < m.pos; q++ {
+				if u1.tid != m.stat[q].tid {
+					logging.Logger.Error("error:有不一致的tid")
+				}
 				if u1.tseq == m.stat[q].tseq {
-					m.stat[q].paired = true
 					if !u1.paired {
+						u1.paired = true
+						m.stat[q].paired = true
 						accPairs++
 						accBytes += uint32(m.stat[q].bytes)  //这里的假设是relay自己的下行带宽足够，而计算客户端的上行带宽
 						accTimes += m.stat[q].timestamp - u1.timestamp
 						break
 					} else {
-						rept++
+						if !m.stat[q].paired {
+							m.stat[q].paired = true
+							rept++
+						}
 					}
 				}
 			}
@@ -96,7 +103,7 @@ func (m *Metrics) Process(msg *Message) (ok bool, data []byte) {
 			bandwidth = int(8 * int64(accBytes) * int64(time.Second) / int64(accTimes) / 1024)
 		}
 
-		logging.Logger.Info(msg.From, " 应收包:", pShould, " 实收包:", pRecv, " 重复:", rept, " 带宽:", bandwidth)
+		logging.Logger.Info(msg.From, " 应收包:", pShould, " 实收包:", pRecv, " 重复:", rept, " 带宽:", bandwidth, " pairs:", accPairs)
 
 		if pShould > 0 && bandwidth > 0 {
            data = make([]byte, 17)

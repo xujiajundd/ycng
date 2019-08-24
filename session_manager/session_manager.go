@@ -561,7 +561,7 @@ func (sm *SessionManager) sendSignalMessageByPushkit(msg *relay.Message) {
     //msg.payload直接发送，本来就是json串。但这样push只能接收signal了。。。不大利于将来扩展
     payload := msg.Payload
 
-    if len(token.Token)>0 && payload != nil {
+    if token != nil && len(token.Token)>0 && payload != nil {
     	if token.Platform == "ios" {
 			sm.pushkit.Push(token.Token, payload)
 			logging.Logger.Info("push to:", msg.To, " with token:", token)

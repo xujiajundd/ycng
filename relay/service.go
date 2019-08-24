@@ -15,7 +15,7 @@ import (
 
 	"github.com/xujiajundd/ycng/utils/logging"
 	"time"
-	"github.com/xujiajundd/ycng/utils"
+	//"github.com/xujiajundd/ycng/utils"
 )
 
 type Service struct {
@@ -106,6 +106,7 @@ func (s *Service) loop() {
 
 func (s *Service) handlePacket(packet *ReceivedPacket) {
 	//TODO：这个可以做性能优化，分配到多个线程去处理
+	//其实单线程也可以，如果server的资源有富余，可以起多个relay实例。
 	msg, err := NewMessageFromObfuscatedData(packet.Body)
 	if err != nil {
 		logging.Logger.Warn("error:", err)
@@ -476,5 +477,5 @@ func (s *Service) handleTicker(now time.Time) {
 		}
 	}
 
-	utils.PrintMemUsage()
+	//utils.PrintMemUsage()
 }

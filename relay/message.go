@@ -49,6 +49,7 @@ const (
 
 	YCKMetrixDataTypeBandwidthUp          = 10
 	YCKMetrixDataTypeLossrateUp           = 11
+	YCKMetrixDataTypeRealTrafficUp        = 12
 )
 
 

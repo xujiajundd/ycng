@@ -26,6 +26,9 @@ const (
 	UdpMessageTypeTurnRegReceived   = 2  //服务器返回请求收到
 	UdpMessageTypeTurnUnReg         = 3  //客户端注销session注册
 	UdpMessageTypeTurnRegNoExist    = 4  //session未注册
+	UdpMessageTypeTurnInfo          = 5  //1-1时，回复给各方的外网地址
+	UdpMessageTypeTurnProbe         = 6  //p2p探测包
+	UdpMessageTypeTurnProbeAck      = 7  //p2p探测回复包
 	UdpMessageTypeAudioStream       = 20 //音频包
 	UdpMessageTypeVideoStream       = 30 //视频包
 	UdpMessageTypeVideoStreamIFrame = 31 //视频i帧

@@ -582,9 +582,9 @@ func (sm *SessionManager) sendSignalMessage(msg *relay.Message, needPush bool) {
 
 func (sm *SessionManager) GetRelays() {
 	sm.relays = []string{
-		"10.18.96.46:19001",
-		"10.18.96.46:19002",
-		"10.18.96.46:19003",
+		"10.18.98.224:19001",
+		"10.18.98.224:19002",
+		"10.18.98.224:19003",
 		"106.75.106.193:19001",
 		"117.50.61.49:19001",
 		"117.50.63.224:19001",

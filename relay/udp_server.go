@@ -10,8 +10,8 @@ package relay
 import (
 	"net"
 
-	"github.com/xujiajundd/ycng/utils/logging"
 	"time"
+	"github.com/xujiajundd/ycng/utils/logging"
 )
 
 type UdpServer struct {
@@ -63,9 +63,9 @@ func (u *UdpServer) handleClient() {
 			FromUdpAddr: addr,
 			Time:        time.Now().UnixNano(),
 		}
-		//go func() {  //模拟一下延迟
-		//   Time.Sleep(100*Time.Millisecond);
-		//   u.subscriberCh <- packet
+		//go func() { //模拟一下延迟
+		//	time.Sleep(200 * time.Millisecond)
+		//	u.subscriberCh <- packet
 		//}()
 
 		u.subscriberCh <- packet

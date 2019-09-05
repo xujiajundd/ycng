@@ -43,7 +43,7 @@ func NewService(config *Config) *Service {
 		packetReceiveCh: make(chan *ReceivedPacket, 10),
 		isRunning:       false,
 		stop:            make(chan struct{}),
-		ticker:          time.NewTicker(10 * time.Second),
+		ticker:          time.NewTicker(20 * time.Second),
 	}
 
 	service.udp_server = NewUdpServer(config, service.packetReceiveCh)
@@ -122,6 +122,9 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 
 	case UdpMessageTypeTurnRegReceived: //只有客户端会收到这个
 
+	case UdpMessageTypeTurnUnReg:
+		s.handleMessageTurnUnReg(msg, packet)
+
 	case UdpMessageTypeAudioStream:
 		s.handleMessageAudioStream(msg, packet)
 
@@ -181,6 +184,13 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 	msg.MsgType = UdpMessageTypeTurnRegReceived
 	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), participant.UdpAddr)
 
+	//Turn info支持P2P隧道
+	if len(session.Participants) == 2 {
+		msg.MsgType = UdpMessageTypeTurnInfo
+		//如果udp addr有变化，则向双发发布各自的外网地址
+		//todo
+	}
+
 	//bugfix：将其他participant的pengingMsg检查一遍，如果有上次遗留的则清除。
 	for _, p := range session.Participants {
 		if p.PendingMsg != nil {
@@ -191,6 +201,23 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 	}
 }
 
+func (s *Service) handleMessageTurnUnReg(msg *Message, packet *ReceivedPacket) {
+	//客户端退出是应该发这个消息，注销在Relay上的注册
+
+	//检查当前session是否存在, 如已不存在，无须UnReg
+	session := s.sessions[msg.To]
+	if session == nil {
+		return
+	}
+
+	//当前用户取消注册
+	participant := session.Participants[msg.From]
+	if participant == nil {
+		return
+	}
+	delete(session.Participants, participant.Id)
+}
+
 func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket) {
 	//logging.Logger.Info("received audio From ", msg.From, " To ", msg.To)
 
@@ -199,7 +226,7 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			ok, data := participant.Metrics.Process(msg)
+			ok, data := participant.Metrics.Process(msg, packet.Time)
 			if ok {
 				participant.PendingExtra = data
 			}
@@ -227,7 +254,7 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
-		logging.Logger.Info("session not existed", msg.To)
+		logging.Logger.Info("session not existed ", msg.To)
 		s.askForReTurnReg(msg, packet)
 	}
 }
@@ -240,7 +267,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			ok, data := participant.Metrics.Process(msg)
+			ok, data := participant.Metrics.Process(msg, packet.Time)
 			if ok {
 				participant.PendingExtra = data
 			}
@@ -272,7 +299,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
-		logging.Logger.Info("session not existed", msg.To)
+		logging.Logger.Info("session not existed ", msg.To)
 		s.askForReTurnReg(msg, packet)
 	}
 }
@@ -285,7 +312,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
-			ok, data := participant.Metrics.Process(msg)
+			ok, data := participant.Metrics.Process(msg, packet.Time)
 			if ok {
 				participant.PendingExtra = data
 			}
@@ -317,7 +344,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
-		logging.Logger.Info("session not existed", msg.To)
+		logging.Logger.Info("session not existed ", msg.To)
 		s.askForReTurnReg(msg, packet)
 	}
 }

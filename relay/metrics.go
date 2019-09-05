@@ -39,12 +39,12 @@ func NewMetrics() *Metrics {
 	return metrics
 }
 
-func (m *Metrics) Process(msg *Message) (ok bool, data []byte) {
+func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) {
 	m.stat[m.pos].paired = false
 	m.stat[m.pos].tid = msg.Tid
 	m.stat[m.pos].tseq = msg.Tseq
 	m.stat[m.pos].bytes = msg.NetTrafficSize()
-	currentTimestamp := time.Now().UnixNano()
+	currentTimestamp := timestamp
 	m.stat[m.pos].timestamp = currentTimestamp
 
 	m.pos++
@@ -102,8 +102,7 @@ func (m *Metrics) Process(msg *Message) (ok bool, data []byte) {
 		packetRecv := m.pos - packetDup
 		totalTime = int((m.stat[m.pos-1].timestamp - m.stat[0].timestamp) / 1000000) //毫秒时间
 
-		m.pos = 0
-		packetShould := 2*(maxSeq-minSeq) + 2
+		packetShould := 2*(maxSeq-minSeq)
 		if packetShould < 0 || (minSeq == 0 && maxSeq == 0) {
 			packetShould = 0
 		}
@@ -129,6 +128,8 @@ func (m *Metrics) Process(msg *Message) (ok bool, data []byte) {
 			data[14] = msg.Tid
 			binary.BigEndian.PutUint32(data[15:19], uint32(totalBytes))
 			binary.BigEndian.PutUint16(data[19:21], uint16(totalTime))
+
+			m.pos = 0
 			return true, data
 		}
 	}

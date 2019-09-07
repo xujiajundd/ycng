@@ -273,6 +273,16 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 
 		switch signal.Signal {
 		case YCKCallSignalTypeInvite:
+			rs, ok := signal.Info["relays"].([]interface{})
+			if ok {
+				for _, value := range rs {
+					r := value.(string)
+					session.Relays = append(session.Relays, r)
+				}
+			}
+
+			//logging.Logger.Info("Relays in signal invite:", session.Relays)
+
 			if pf == nil {
 				pf = NewParticipant(signal.From)
 				session.Participants[signal.From] = pf
@@ -345,6 +355,20 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 		switch signal.Signal {
 		case YCKCallSignalTypeInvite:
 			//回复ring，accept，设置状态为incall
+			if signal.Info["relays"] != nil {
+				if session.Relays != nil {
+					logging.Logger.Warn("session已经有relays情况下，invite又带了relays")
+				}
+				rs, ok := signal.Info["relays"].([]interface{})
+				if ok {
+					for _, value := range rs {
+						r := value.(string)
+						session.Relays = append(session.Relays, r)
+					}
+				}
+			}
+
+
 			if pf == nil {
 				pf = NewParticipant(signal.From)
 				session.Participants[signal.From] = pf
@@ -363,6 +387,11 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 				}
 
 				accept := NewSignal(YCKCallSignalTypeAccept, SessionManagerUserId, signal.From, session.Sid)
+				if signal.Info["relays"] == nil {
+					accept.Info = make(map[string]interface{})
+					accept.Info["relays"] = session.Relays
+				}
+
 				payload, err = accept.Marshal()
 				if err == nil {
 					msg := relay.NewMessage(relay.UdpMessageTypeUserSignal, SessionManagerUserId, signal.From, 0, payload, nil)
@@ -437,6 +466,8 @@ func (sm *SessionManager) processSignalOp(signal *Signal, session *Session) {
 
 						invite := NewSignal(YCKCallSignalTypeInvite, SessionManagerUserId, mem, session.Sid)
 						//TODO:invite将来要加更多内容，比如relays，device info等等
+						invite.Info = make(map[string]interface{})
+						invite.Info["relays"] = session.Relays
 
 						payload, err := invite.Marshal()
 						if err == nil {

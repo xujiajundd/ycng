@@ -203,6 +203,7 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 
 func (s *Service) handleMessageTurnUnReg(msg *Message, packet *ReceivedPacket) {
 	//客户端退出是应该发这个消息，注销在Relay上的注册
+	logging.Logger.Info("received turn unreg From ", msg.From, " for session ", msg.To)
 
 	//检查当前session是否存在, 如已不存在，无须UnReg
 	session := s.sessions[msg.To]

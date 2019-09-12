@@ -108,7 +108,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 		}
 
 		bandwidth := 0
-		if accPairs > 2 && accTimes != 0 {
+		if accPairs > 2 && accTimes > 0 {
 			bandwidth = int(8 * int64(accBytes) * int64(time.Second) / int64(accTimes) / 1024)
 		}
 
@@ -131,6 +131,8 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 
 			m.pos = 0
 			return true, data
+		} else if m.pos >= StatBufferSize {
+			m.pos = 0
 		}
 	}
 

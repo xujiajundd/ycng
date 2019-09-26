@@ -191,12 +191,12 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 		//如果udp addr有变化，则向双发发布各自的外网地址
 		//todo
 		type PInfo struct {
-			id  uint64
-			udp string
+			Id  uint64
+			Udp string
 		}
 		turnInfo := make([]PInfo, 0)
 		for _, p := range session.Participants {
-		    ti := PInfo{id: p.Id, udp:p.UdpAddr.String()}
+		    ti := PInfo{Id: p.Id, Udp:p.UdpAddr.String()}
 		    turnInfo = append(turnInfo, ti)
 		}
 

@@ -194,11 +194,11 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 			id  uint64
 			udp string
 		}
-		p0 := session.Participants[0]
-		p1 := session.Participants[1]
-		pInfo0 := PInfo{id: p0.Id, udp: p0.UdpAddr.String()}
-		pInfo1 := PInfo{id: p1.Id, udp: p1.UdpAddr.String()}
-		turnInfo := []PInfo{pInfo0, pInfo1}
+		turnInfo := make([]PInfo, 0)
+		for _, p := range session.Participants {
+		    ti := PInfo{id: p.Id, udp:p.UdpAddr.String()}
+		    turnInfo = append(turnInfo, ti)
+		}
 
 		data, err := json.Marshal(turnInfo)
 
@@ -206,8 +206,10 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 			logging.Logger.Warn("turn info err", err)
 		} else {
 			msg.Payload = data
-			s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p0.UdpAddr)
-			s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p1.UdpAddr)
+			packet := msg.ObfuscatedDataOfMessage()
+			for _, p := range session.Participants {
+				s.udp_server.SendPacket(packet, p.UdpAddr)
+			}
 		}
 	}
 

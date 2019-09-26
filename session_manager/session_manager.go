@@ -47,12 +47,12 @@ type SessionManager struct {
 func NewSessionManager() *SessionManager {
 	sm := &SessionManager{
 		sessions:     make(map[uint64]*Session),
-		saddr:        ":20005",
+		saddr:        ":20001",
 		subscriberCh: make(chan *relay.ReceivedPacket),
 		dedup:        utils.NewLRU(100, nil),
 		isRunning:    false,
 		stop:         make(chan struct{}),
-		ticker:       time.NewTicker(200 * time.Second),
+		ticker:       time.NewTicker(60 * time.Second),
 	}
 	sm.GetRelays()
 	sm.pushkit = NewPushkit()
@@ -613,11 +613,16 @@ func (sm *SessionManager) sendSignalMessage(msg *relay.Message, needPush bool) {
 
 func (sm *SessionManager) GetRelays() {
 	sm.relays = []string{
-		"10.18.98.224:19001",
-		"10.18.98.224:19002",
-		"10.18.98.224:19003",
+		//"10.18.98.224:19001",
+		//"10.18.98.224:19002",
+		//"10.18.98.224:19003",
 		"106.75.106.193:19001",
 		"117.50.61.49:19001",
 		"117.50.63.224:19001",
+		"52.29.108.52:19001",
+		"13.126.21.144:19001",
+		"35.167.164.205:19001",
+		"54.169.30.201:19001",
+		"123.56.160.90:19001",
 	}
 }

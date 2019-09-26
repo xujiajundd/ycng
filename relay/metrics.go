@@ -124,8 +124,6 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 			data[8] = msg.Tid
 			binary.BigEndian.PutUint16(data[9:11], uint16(packetShould))
 			binary.BigEndian.PutUint16(data[11:13], uint16(packetRecv))
-			//data[13] = YCKMetrixDataTypeRealTrafficUp
-			//data[14] = msg.Tid
 			binary.BigEndian.PutUint32(data[13:17], uint32(totalBytes))
 			binary.BigEndian.PutUint16(data[17:19], uint16(totalTime))
 

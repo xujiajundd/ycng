@@ -16,6 +16,7 @@ import (
 	"github.com/xujiajundd/ycng/utils/logging"
 	"time"
 	//"github.com/xujiajundd/ycng/utils"
+	"encoding/json"
 )
 
 type Service struct {
@@ -189,6 +190,25 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 		msg.MsgType = UdpMessageTypeTurnInfo
 		//如果udp addr有变化，则向双发发布各自的外网地址
 		//todo
+		type PInfo struct {
+			id  uint64
+			udp string
+		}
+		p0 := session.Participants[0]
+		p1 := session.Participants[1]
+		pInfo0 := PInfo{id: p0.Id, udp: p0.UdpAddr.String()}
+		pInfo1 := PInfo{id: p1.Id, udp: p1.UdpAddr.String()}
+		turnInfo := []PInfo{pInfo0, pInfo1}
+
+		data, err := json.Marshal(turnInfo)
+
+		if err != nil {
+			logging.Logger.Warn("turn info err", err)
+		} else {
+			msg.Payload = data
+			s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p0.UdpAddr)
+			s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p1.UdpAddr)
+		}
 	}
 
 	//bugfix：将其他participant的pengingMsg检查一遍，如果有上次遗留的则清除。
@@ -217,6 +237,11 @@ func (s *Service) handleMessageTurnUnReg(msg *Message, packet *ReceivedPacket) {
 		return
 	}
 	delete(session.Participants, participant.Id)
+
+	////如果剩下的参与方只有两个，也尝试发TurnInfo？
+	//if len(session.Participants) == 2 {
+	//	//todo
+	//}
 }
 
 func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket) {
@@ -284,7 +309,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 						p.PendingMsg.Tseq = p.Tseq
 						msg.Tseq = p.Tseq
 						p.Tseq++
-						if p.PendingExtra != nil && msg.Extra == nil{
+						if p.PendingExtra != nil && msg.Extra == nil {
 							msg.Extra = p.PendingExtra
 							msg.SetFlag(UdpMessageFlagExtra)
 							p.PendingExtra = nil
@@ -329,7 +354,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 						p.PendingMsg.Tseq = p.Tseq
 						msg.Tseq = p.Tseq
 						p.Tseq++
-						if p.PendingExtra != nil && msg.Extra == nil{
+						if p.PendingExtra != nil && msg.Extra == nil {
 							msg.Extra = p.PendingExtra
 							msg.SetFlag(UdpMessageFlagExtra)
 							p.PendingExtra = nil
@@ -390,19 +415,19 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			nack := msg.Payload
 			dest := session.Participants[msg.Dest]
 			if dest == nil {
-				return;
+				return
 			}
 			n_tries, isIFrame, packets := dest.VideoQueueOut.ProcessNack(nack)
 			//从Dest的QueueOut中查找是否可以响应nack
-             if packets != nil && len(packets) > 0 {
-             	for i:=0; i<len(packets); i++ {
-             		packet := packets[i]
-             		nmsgType := UdpMessageTypeVideoStream
-             		if isIFrame {
-             			nmsgType = UdpMessageTypeVideoStreamIFrame
+			if packets != nil && len(packets) > 0 {
+				for i := 0; i < len(packets); i++ {
+					packet := packets[i]
+					nmsgType := UdpMessageTypeVideoStream
+					if isIFrame {
+						nmsgType = UdpMessageTypeVideoStreamIFrame
 					}
-             		nmsg := NewMessage(uint8(nmsgType), msg.Dest, session.Id, msg.From, packet, nil)
-             		nmsg.Tid = msg.Tid
+					nmsg := NewMessage(uint8(nmsgType), msg.Dest, session.Id, msg.From, packet, nil)
+					nmsg.Tid = msg.Tid
 					if participant.PendingMsg == nil {
 						participant.PendingMsg = nmsg
 					} else {
@@ -414,7 +439,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 						participant.PendingMsg = nil
 					}
 				}
-			 }
+			}
 
 			//如果是tries>0且QueueOut中无响应，则发给Dest处理
 			if n_tries > 1 && len(packets) == 0 {
@@ -437,7 +462,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 	}
 }
 
-func(s *Service)askForReTurnReg(msg *Message, packet *ReceivedPacket){
+func (s *Service) askForReTurnReg(msg *Message, packet *ReceivedPacket) {
 	newMsg := NewMessage(UdpMessageTypeTurnRegNoExist, msg.From, msg.To, msg.Dest, nil, nil)
 	newMsg.Tid = msg.Tid
 	s.udp_server.SendPacket(newMsg.ObfuscatedDataOfMessage(), packet.FromUdpAddr)
@@ -491,7 +516,7 @@ func (s *Service) handleTicker(now time.Time) {
 		}
 	}
 
-	if len(s.sessions) > 0 || len(s.users) > 0{
+	if len(s.sessions) > 0 || len(s.users) > 0 {
 		logging.Logger.Infoln("details:")
 		for skey, session := range s.sessions {
 			logging.Logger.Info("    session: ", skey)

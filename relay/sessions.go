@@ -8,9 +8,10 @@
 package relay
 
 import (
+	"encoding/binary"
 	"net"
 	"time"
-	"encoding/binary"
+
 	"github.com/xujiajundd/ycng/utils/logging"
 )
 
@@ -40,18 +41,17 @@ const (
 	QueueSize = 500
 )
 
-
 type OutPacket struct {
-	Seqid      int16
-	Sbn        uint8
-	Esi        uint16
-	Iframe     bool
-	Data       []byte
+	Seqid  int16
+	Sbn    uint8
+	Esi    uint16
+	Iframe bool
+	Data   []byte
 }
 
 type QueueOut struct {
-	Queue     []*OutPacket
-	Idx       int
+	Queue []*OutPacket
+	Idx   int
 }
 
 func NewQueueOut() *QueueOut {
@@ -63,10 +63,10 @@ func NewQueueOut() *QueueOut {
 	return &qo
 }
 
-func (qo *QueueOut)AddItem(isIFrame bool, payload[]byte) {
+func (qo *QueueOut) AddItem(isIFrame bool, payload []byte) {
 	packet := &OutPacket{
 		Iframe: isIFrame,
-		Data: payload,
+		Data:   payload,
 	}
 	qo.Queue[qo.Idx] = packet
 	qo.Idx++
@@ -79,10 +79,11 @@ func (qo *QueueOut)AddItem(isIFrame bool, payload[]byte) {
 	packet.Esi = binary.BigEndian.Uint16(payload[9:11])
 }
 
-func (qo *QueueOut)ProcessNack(nack []byte) (n_tries uint8, isIframe bool, packets [][]byte) {
-    if len(nack) < 4 {
-    	logging.Logger.Warn("incorrect nack payload size:", len(nack))
-    	return
+func (qo *QueueOut) ProcessNack(nack []byte) (n_tries uint8, isIframe bool, packets [][]byte) {
+	packets = nil
+	if len(nack) < 4 {
+		logging.Logger.Warn("incorrect nack payload size:", len(nack))
+		return
 	}
 	seqid := int16(binary.BigEndian.Uint16(nack[0:2]))
 	n_tries = uint8(nack[2])
@@ -94,14 +95,13 @@ func (qo *QueueOut)ProcessNack(nack []byte) (n_tries uint8, isIframe bool, packe
 			return
 		}
 		blks_map = make([]uint64, block_num)
-		for  i:=0; i<int(block_num); i++ {
-			blks_map[i] = binary.BigEndian.Uint64(nack[4+8*i:4+8*i+8])
+		for i := 0; i < int(block_num); i++ {
+			blks_map[i] = binary.BigEndian.Uint64(nack[4+8*i : 4+8*i+8])
 		}
 	}
 
 	packets = make([][]byte, 0)
-
-	for i:= 0; i<QueueSize; i++ {
+	for i := 0; i < QueueSize; i++ {
 		packet := qo.Queue[i]
 		if packet != nil && packet.Seqid == seqid {
 			isIframe = packet.Iframe
@@ -110,7 +110,7 @@ func (qo *QueueOut)ProcessNack(nack []byte) (n_tries uint8, isIframe bool, packe
 			} else {
 				bmap := blks_map[packet.Sbn]
 				if packet.Esi < 64 {
-					if bmap & (uint64(0x01) << packet.Esi) == 0 {
+					if bmap&(uint64(0x01)<<packet.Esi) == 0 {
 						packets = append(packets, packet.Data)
 					}
 				}
@@ -121,7 +121,6 @@ func (qo *QueueOut)ProcessNack(nack []byte) (n_tries uint8, isIframe bool, packe
 	logging.Logger.Info("nack for seq:", seqid, " n_tries:", n_tries, " blk_num:", block_num, " packets:", len(packets))
 	return
 }
-
 
 type Participant struct {
 	Id             uint64       //8 byte participant account id
@@ -136,7 +135,6 @@ type Participant struct {
 }
 
 type Session struct {
-	//Id           []byte
 	Id           uint64
 	Type         int
 	Participants map[uint64]*Participant
@@ -161,4 +159,3 @@ func NewSessions() *Sessions {
 	}
 	return s
 }
-

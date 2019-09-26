@@ -50,11 +50,10 @@ const (
 const (
 	UdpMessageExtraTypeMetrix = 1
 
-	YCKMetrixDataTypeBandwidthUp          = 10
-	YCKMetrixDataTypeLossrateUp           = 11
-	YCKMetrixDataTypeRealTrafficUp        = 12
+	YCKMetrixDataTypeBandwidthUp   = 10
+	YCKMetrixDataTypeLossrateUp    = 11
+	YCKMetrixDataTypeRealTrafficUp = 12
 )
-
 
 type Message struct {
 	Tseq      int16
@@ -248,7 +247,6 @@ func (m *Message) HasFlag(flag uint16) bool {
 	return (m.Flags & flag) == flag
 }
 
-
 func (m *Message) NetTrafficSize() uint16 {
 	size := 28 + 8 + 24 + len(m.Payload)
 	if m.HasFlag(UdpMessageFlagDest) {
@@ -260,3 +258,5 @@ func (m *Message) NetTrafficSize() uint16 {
 
 	return uint16(size)
 }
+
+

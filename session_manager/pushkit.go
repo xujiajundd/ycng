@@ -41,6 +41,7 @@ func (pk *Pushkit) Push(token string, payload []byte) {
 
 	notification.DeviceToken = token
 	notification.Payload = payload //[]byte(`{"aps":{"alert":"Hello!"}}`)
+	notification.PushType = "voip" //apns2.PushTypeAlert
 
 	res, err := pk.Client.Push(notification)
 
@@ -48,5 +49,5 @@ func (pk *Pushkit) Push(token string, payload []byte) {
 		logging.Logger.Fatal("Error:", err)
 	}
 
-	fmt.Printf("pushkit ret: %v %v %v\n", res.StatusCode, res.ApnsID, res.Reason)
+	fmt.Printf("pushkit ret: %v %v %v %v\n", res.StatusCode, res.ApnsID, res.Reason, notification.PushType)
 }

@@ -111,13 +111,13 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 		}
 
 		bandwidth := 0
-		if accPairs >= 2 && accTimes > 0 {
+		if accPairs > 0 && accTimes > 0 {
 			bandwidth = int(8 * int64(accBytes) * int64(time.Second) / int64(accTimes) / 1024)
 		}
 
 		logging.Logger.Info(msg.From, " 应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
 
-		if packetShould > 0 && bandwidth > 0 {
+		if packetShould > 0 {
 			data = make([]byte, 19)
 			data[0] = UdpMessageExtraTypeMetrix
 			data[1] = YCKMetrixDataTypeBandwidthUp

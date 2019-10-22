@@ -40,6 +40,8 @@ func NewMetrics() *Metrics {
 }
 
 func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) {
+	data = nil
+
 	m.stat[m.pos].paired = false
 	m.stat[m.pos].tid = msg.Tid
 	m.stat[m.pos].tseq = msg.Tseq
@@ -85,7 +87,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 						u1.paired = true
 						m.stat[q].paired = true
 						deltaTime := m.stat[q].timestamp - u1.timestamp
-						if deltaTime != 0 && int(int64(m.stat[q].bytes) * int64(time.Second) / int64(deltaTime) / 128) < 25000 {
+						if deltaTime != 0 && int(int64(m.stat[q].bytes) * int64(time.Second) / int64(deltaTime) / 128) < 30000 {
 							accPairs++
 							accBytes += uint32(m.stat[q].bytes) //这里的假设是relay自己的下行带宽足够，而计算客户端的上行带宽
 							accTimes += deltaTime
@@ -129,13 +131,22 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 			binary.BigEndian.PutUint16(data[11:13], uint16(packetRecv))
 			binary.BigEndian.PutUint32(data[13:17], uint32(totalBytes))
 			binary.BigEndian.PutUint16(data[17:19], uint16(totalTime))
+		}
 
-			m.pos = 0
-			return true, data
-		} else if m.pos >= StatBufferSize {
-			m.pos = 0
+		//m.pos = 0  //上一批的最后5个，在下一批继续用于计算，在间隙性分批收包的情况下，有助于计算带宽
+		reuse := 5
+		if reuse < m.pos {
+			for i:=0; i<5; i++ {
+				m.stat[i] = m.stat[m.pos-reuse+i]
+				m.stat[i].paired = false
+			}
+			m.pos = reuse
 		}
 	}
 
-	return false, nil
+	if data != nil {
+		return true, data
+	} else {
+		return false, nil
+	}
 }

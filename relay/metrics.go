@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const StatBufferSize = 100
+const StatBufferSize = 120
 
 type UmsgStat struct {
 	paired    bool
@@ -87,7 +87,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 						u1.paired = true
 						m.stat[q].paired = true
 						deltaTime := m.stat[q].timestamp - u1.timestamp
-						if deltaTime != 0 && int(int64(m.stat[q].bytes) * int64(time.Second) / int64(deltaTime) / 128) < 30000 {
+						if deltaTime != 0 && int(int64(m.stat[q].bytes) * int64(time.Second) / int64(deltaTime) / 128) < 25000 {
 							accPairs++
 							accBytes += uint32(m.stat[q].bytes) //这里的假设是relay自己的下行带宽足够，而计算客户端的上行带宽
 							accTimes += deltaTime
@@ -134,9 +134,9 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 		}
 
 		//m.pos = 0  //上一批的最后5个，在下一批继续用于计算，在间隙性分批收包的情况下，有助于计算带宽
-		reuse := 5
+		reuse := 20
 		if reuse < m.pos {
-			for i:=0; i<5; i++ {
+			for i:=0; i<reuse; i++ {
 				m.stat[i] = m.stat[m.pos-reuse+i]
 				m.stat[i].paired = false
 			}

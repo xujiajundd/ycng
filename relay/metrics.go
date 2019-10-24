@@ -87,11 +87,11 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 						u1.paired = true
 						m.stat[q].paired = true
 						deltaTime := m.stat[q].timestamp - u1.timestamp
-						if deltaTime != 0 && int(int64(m.stat[q].bytes) * int64(time.Second) / int64(deltaTime) / 128) < 25000 {
+						//if deltaTime != 0 && int(int64(m.stat[q].bytes) * int64(time.Second) / int64(deltaTime) / 128) < 25000 {
 							accPairs++
 							accBytes += uint32(m.stat[q].bytes) //这里的假设是relay自己的下行带宽足够，而计算客户端的上行带宽
 							accTimes += deltaTime
-						}
+						//}
 						break
 					} else {
 						if !m.stat[q].paired {

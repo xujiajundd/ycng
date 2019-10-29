@@ -50,9 +50,7 @@ const (
 const (
 	UdpMessageExtraTypeMetrix = 1
 
-	YCKMetrixDataTypeBandwidthUp   = 10
-	YCKMetrixDataTypeLossrateUp    = 11
-	YCKMetrixDataTypeRealTrafficUp = 12
+	YCKMetrixDataTypeUp   = 2
 )
 
 type Message struct {

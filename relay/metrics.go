@@ -112,7 +112,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 			packetShould = 0
 		}
 
-		bandwidth := 0
+		bandwidth := -1
 		if accPairs > 0 && accTimes > 0 {
 			bandwidth = int(8 * int64(accBytes) * int64(time.Second) / int64(accTimes) / 1024)
 		}
@@ -120,17 +120,15 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 		logging.Logger.Info(msg.From, " 应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
 
 		if packetShould > 0 {
-			data = make([]byte, 19)
+			data = make([]byte, 17)
 			data[0] = UdpMessageExtraTypeMetrix
-			data[1] = YCKMetrixDataTypeBandwidthUp
+			data[1] = YCKMetrixDataTypeUp
 			data[2] = msg.Tid
-			binary.BigEndian.PutUint32(data[3:7], uint32(bandwidth))
-			data[7] = YCKMetrixDataTypeLossrateUp
-			data[8] = msg.Tid
-			binary.BigEndian.PutUint16(data[9:11], uint16(packetShould))
-			binary.BigEndian.PutUint16(data[11:13], uint16(packetRecv))
-			binary.BigEndian.PutUint32(data[13:17], uint32(totalBytes))
-			binary.BigEndian.PutUint16(data[17:19], uint16(totalTime))
+			binary.BigEndian.PutUint32(data[3:7], uint32(totalBytes))
+			binary.BigEndian.PutUint16(data[7:9], uint16(totalTime))
+			binary.BigEndian.PutUint32(data[9:13], uint32(bandwidth))
+			binary.BigEndian.PutUint16(data[13:15], uint16(packetShould))
+			binary.BigEndian.PutUint16(data[15:17], uint16(packetRecv))
 		}
 
 		//m.pos = 0  //上一批的最后5个，在下一批继续用于计算，在间隙性分批收包的情况下，有助于计算带宽

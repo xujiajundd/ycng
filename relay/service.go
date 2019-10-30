@@ -266,13 +266,24 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 						p.PendingMsg.Tseq = p.Tseq
 						msg.Tseq = p.Tseq
 						p.Tseq++
+						extraAdded := false
 						if p.PendingExtra != nil && msg.Extra == nil {
-							msg.Extra = p.PendingExtra
-							msg.SetFlag(UdpMessageFlagExtra)
-							p.PendingExtra = nil
+							now := time.Now()
+							if  now.Sub(p.LastActiveTime) < 100 * time.Millisecond {
+								msg.Extra = p.PendingExtra
+								msg.SetFlag(UdpMessageFlagExtra)
+								p.PendingExtra = nil
+								extraAdded = true
+							} else {
+								p.PendingExtra = nil
+							}
 						}
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						if extraAdded {
+							msg.Extra = nil
+							msg.UnSetFlag(UdpMessageFlagExtra)
+						}
 						p.PendingMsg = nil
 					}
 				}
@@ -311,13 +322,24 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 						p.PendingMsg.Tseq = p.Tseq
 						msg.Tseq = p.Tseq
 						p.Tseq++
+						extraAdded := false
 						if p.PendingExtra != nil && msg.Extra == nil {
-							msg.Extra = p.PendingExtra
-							msg.SetFlag(UdpMessageFlagExtra)
-							p.PendingExtra = nil
+							now := time.Now()
+							if  now.Sub(p.LastActiveTime) < 100 * time.Millisecond {
+								msg.Extra = p.PendingExtra
+								msg.SetFlag(UdpMessageFlagExtra)
+								p.PendingExtra = nil
+								extraAdded = true
+							} else {
+								p.PendingExtra = nil
+							}
 						}
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						if extraAdded {
+							msg.Extra = nil
+							msg.UnSetFlag(UdpMessageFlagExtra)
+						}
 						p.PendingMsg = nil
 					}
 				}
@@ -356,13 +378,24 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 						p.PendingMsg.Tseq = p.Tseq
 						msg.Tseq = p.Tseq
 						p.Tseq++
+						extraAdded := false
 						if p.PendingExtra != nil && msg.Extra == nil {
-							msg.Extra = p.PendingExtra
-							msg.SetFlag(UdpMessageFlagExtra)
-							p.PendingExtra = nil
+							now := time.Now()
+							if  now.Sub(p.LastActiveTime) < 100 * time.Millisecond {
+								msg.Extra = p.PendingExtra
+								msg.SetFlag(UdpMessageFlagExtra)
+								p.PendingExtra = nil
+								extraAdded = true
+							} else {
+								p.PendingExtra = nil
+							}
 						}
 						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						if extraAdded {
+							msg.Extra = nil
+							msg.UnSetFlag(UdpMessageFlagExtra)
+						}
 						p.PendingMsg = nil
 					}
 				}
@@ -385,7 +418,7 @@ func (s *Service) handleMessageVideoASkForIFrame(msg *Message, packet *ReceivedP
 	if session != nil {
 		participant := session.Participants[msg.From]
 		if participant != nil {
-			participant.LastActiveTime = time.Now()
+			//participant.LastActiveTime = time.Now()
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
 					continue
@@ -412,7 +445,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 	if session != nil {
 		participant := session.Participants[msg.From]
 		if participant != nil {
-			participant.LastActiveTime = time.Now()
+			//participant.LastActiveTime = time.Now()
 			//解nack包
 			nack := msg.Payload
 			dest := session.Participants[msg.Dest]

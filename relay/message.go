@@ -51,6 +51,7 @@ const (
 	UdpMessageExtraTypeMetrix = 1
 
 	YCKMetrixDataTypeUp   = 2
+	YCKMetrixDataTypeRTT  = 4
 )
 
 type Message struct {
@@ -239,6 +240,10 @@ func (m *Message) Marshal() []byte {
 
 func (m *Message) SetFlag(flag uint16) {
 	m.Flags = m.Flags | flag
+}
+
+func (m *Message) UnSetFlag(flag uint16) {
+	m.Flags = m.Flags & (^flag)
 }
 
 func (m *Message) HasFlag(flag uint16) bool {

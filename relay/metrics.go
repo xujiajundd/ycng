@@ -27,6 +27,7 @@ type Metrics struct {
 	stat          [StatBufferSize]UmsgStat
 	pos           int
 	lastTimestamp int64
+	lastTimestampRTT int64
 }
 
 func NewMetrics() *Metrics {
@@ -34,6 +35,7 @@ func NewMetrics() *Metrics {
 		stat:          [StatBufferSize]UmsgStat{},
 		pos:           0,
 		lastTimestamp: time.Now().UnixNano(),
+		lastTimestampRTT: time.Now().UnixNano(),
 	}
 
 	return metrics
@@ -120,15 +122,16 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 		logging.Logger.Info(msg.From, " 应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
 
 		if packetShould > 0 {
-			data = make([]byte, 17)
+			data = make([]byte, 19)
 			data[0] = UdpMessageExtraTypeMetrix
-			data[1] = YCKMetrixDataTypeUp
-			data[2] = msg.Tid
-			binary.BigEndian.PutUint32(data[3:7], uint32(totalBytes))
-			binary.BigEndian.PutUint16(data[7:9], uint16(totalTime))
-			binary.BigEndian.PutUint32(data[9:13], uint32(bandwidth))
-			binary.BigEndian.PutUint16(data[13:15], uint16(packetShould))
-			binary.BigEndian.PutUint16(data[15:17], uint16(packetRecv))
+			binary.BigEndian.PutUint16(data[1:3], uint16(16))
+			data[3] = YCKMetrixDataTypeUp
+			data[4] = msg.Tid
+			binary.BigEndian.PutUint32(data[5:9], uint32(totalBytes))
+			binary.BigEndian.PutUint16(data[9:11], uint16(totalTime))
+			binary.BigEndian.PutUint32(data[11:15], uint32(bandwidth))
+			binary.BigEndian.PutUint16(data[15:17], uint16(packetShould))
+			binary.BigEndian.PutUint16(data[17:19], uint16(packetRecv))
 		}
 
 		//m.pos = 0  //上一批的最后5个，在下一批继续用于计算，在间隙性分批收包的情况下，有助于计算带宽
@@ -140,11 +143,19 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 			}
 			m.pos = reuse
 		}
+	} else if (currentTimestamp - m.lastTimestampRTT) > int64(100*time.Millisecond) { //选择返回RTT计算需要数据
+		m.lastTimestampRTT = currentTimestamp
+		data = make([]byte, 7)
+		data[0] = UdpMessageExtraTypeMetrix
+		binary.BigEndian.PutUint16(data[1:3], uint16(4))
+		data[3] = YCKMetrixDataTypeRTT
+		data[4] = msg.Tid
+		binary.BigEndian.PutUint16(data[5:7], msg.Timestamp)
 	}
 
 	if data != nil {
 		return true, data
 	} else {
-		return false, nil
+	    return false, nil
 	}
 }

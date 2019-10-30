@@ -51,7 +51,6 @@ const (
 	UdpMessageExtraTypeMetrix = 1
 
 	YCKMetrixDataTypeUp   = 2
-	YCKMetrixDataTypeRTT  = 4
 )
 
 type Message struct {

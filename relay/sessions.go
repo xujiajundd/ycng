@@ -129,7 +129,7 @@ type Participant struct {
 	LastActiveTime time.Time
 	Metrics        *Metrics //针对每个participants的in/out metrics
 	PendingMsg     *Message
-	PendingExtra   []byte
+	PendingExtra   *MetrixDataUp
 	VideoQueueOut  *QueueOut
 	Tseq           int16
 }

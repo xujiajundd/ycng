@@ -15,6 +15,34 @@ import (
 
 const StatBufferSize = 120
 
+type MetrixDataUp struct {
+	Tid    uint8
+	Bytes  int32
+	Times   int16
+	Bandwidth  int32
+	PShould    int16
+	PRecv      int16
+	LastSendTimestamp int16
+	Rdelay     uint8
+}
+
+func (md *MetrixDataUp) Marshal() []byte {
+	data := make([]byte, 22)
+	data[0] = UdpMessageExtraTypeMetrix
+	binary.BigEndian.PutUint16(data[1:3], uint16(19))
+	data[3] = YCKMetrixDataTypeUp
+	data[4] = md.Tid
+	binary.BigEndian.PutUint32(data[5:9], uint32(md.Bytes))
+	binary.BigEndian.PutUint16(data[9:11], uint16(md.Times))
+	binary.BigEndian.PutUint32(data[11:15], uint32(md.Bandwidth))
+	binary.BigEndian.PutUint16(data[15:17], uint16(md.PShould))
+	binary.BigEndian.PutUint16(data[17:19], uint16(md.PRecv))
+	binary.BigEndian.PutUint16(data[19:21], uint16(md.LastSendTimestamp))
+	data[21] = md.Rdelay
+
+	return data
+}
+
 type UmsgStat struct {
 	paired    bool
 	tid       uint8
@@ -41,8 +69,9 @@ func NewMetrics() *Metrics {
 	return metrics
 }
 
-func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) {
-	data = nil
+func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixDataUp) {
+	var dataUp  *MetrixDataUp
+	dataUp = nil
 
 	m.stat[m.pos].paired = false
 	m.stat[m.pos].tid = msg.Tid
@@ -52,7 +81,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 	m.stat[m.pos].timestamp = currentTimestamp
 
 	m.pos++
-	if m.pos >= StatBufferSize || (currentTimestamp-m.lastTimestamp) > int64(time.Second) {
+	if m.pos >= StatBufferSize || (currentTimestamp-m.lastTimestamp) > int64(250 * time.Millisecond) && m.pos > 30 {
 		m.lastTimestamp = currentTimestamp
 		minSeq := int16(0)
 		maxSeq := int16(0)
@@ -89,11 +118,9 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 						u1.paired = true
 						m.stat[q].paired = true
 						deltaTime := m.stat[q].timestamp - u1.timestamp
-						//if deltaTime != 0 && int(int64(m.stat[q].bytes) * int64(time.Second) / int64(deltaTime) / 128) < 25000 {
-							accPairs++
-							accBytes += uint32(m.stat[q].bytes) //这里的假设是relay自己的下行带宽足够，而计算客户端的上行带宽
-							accTimes += deltaTime
-						//}
+						accPairs++
+						accBytes += uint32(m.stat[q].bytes) //这里的假设是relay自己的下行带宽足够，而计算客户端的上行带宽
+						accTimes += deltaTime
 						break
 					} else {
 						if !m.stat[q].paired {
@@ -122,16 +149,15 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 		logging.Logger.Info(msg.From, " 应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
 
 		if packetShould > 0 {
-			data = make([]byte, 19)
-			data[0] = UdpMessageExtraTypeMetrix
-			binary.BigEndian.PutUint16(data[1:3], uint16(16))
-			data[3] = YCKMetrixDataTypeUp
-			data[4] = msg.Tid
-			binary.BigEndian.PutUint32(data[5:9], uint32(totalBytes))
-			binary.BigEndian.PutUint16(data[9:11], uint16(totalTime))
-			binary.BigEndian.PutUint32(data[11:15], uint32(bandwidth))
-			binary.BigEndian.PutUint16(data[15:17], uint16(packetShould))
-			binary.BigEndian.PutUint16(data[17:19], uint16(packetRecv))
+			dataUp = &MetrixDataUp{}
+			dataUp.Tid = msg.Tid
+			dataUp.Bytes = int32(totalBytes)
+			dataUp.Times = int16(totalTime)
+			dataUp.Bandwidth = int32(bandwidth)
+			dataUp.PShould = int16(packetShould)
+			dataUp.PRecv = int16(packetRecv)
+			dataUp.LastSendTimestamp = int16(msg.Timestamp)
+			dataUp.Rdelay = 0
 		}
 
 		//m.pos = 0  //上一批的最后5个，在下一批继续用于计算，在间隙性分批收包的情况下，有助于计算带宽
@@ -143,18 +169,10 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data []byte) 
 			}
 			m.pos = reuse
 		}
-	} else if (currentTimestamp - m.lastTimestampRTT) > int64(100*time.Millisecond) { //选择返回RTT计算需要数据
-		m.lastTimestampRTT = currentTimestamp
-		data = make([]byte, 7)
-		data[0] = UdpMessageExtraTypeMetrix
-		binary.BigEndian.PutUint16(data[1:3], uint16(4))
-		data[3] = YCKMetrixDataTypeRTT
-		data[4] = msg.Tid
-		binary.BigEndian.PutUint16(data[5:7], msg.Timestamp)
 	}
 
-	if data != nil {
-		return true, data
+	if dataUp != nil {
+		return true, dataUp
 	} else {
 	    return false, nil
 	}

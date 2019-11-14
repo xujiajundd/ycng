@@ -270,7 +270,7 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
 							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if  delay < 200 {
+							if  delay < 250 {
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
 								msg.SetFlag(UdpMessageFlagExtra)
@@ -328,7 +328,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
 							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if  delay < 200 {
+							if  delay < 250 {
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
 								msg.SetFlag(UdpMessageFlagExtra)
@@ -386,7 +386,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
 							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if  delay < 200 {
+							if  delay < 250 {
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
 								msg.SetFlag(UdpMessageFlagExtra)

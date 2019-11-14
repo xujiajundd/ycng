@@ -549,7 +549,7 @@ func (sm *SessionManager) notifyMemberStateChange(session *Session) {
 
 	//是不是只需要发给incall的人？如果有人需要查询怎么办？
 	for _, p := range session.Participants {
-		if p.InState(YCKParticipantStateIncall) {
+		if p.InState(YCKParticipantStateIncall) || p.InState(YCKParticipantStateCalled) {
 			state := NewSignal(YCKCallSignalTypeMemberState, SessionManagerUserId, p.Uid, session.Sid)
 			state.Info = info
 			payload, err := state.Marshal()

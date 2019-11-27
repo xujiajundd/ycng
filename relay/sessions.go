@@ -123,7 +123,7 @@ func (qo *QueueOut) ProcessNack(nack []byte) (n_tries uint8, isIframe bool, pack
 }
 
 type Participant struct {
-	Id             uint64       //8 byte participant account id
+	Id             int64        //8 byte participant account id
 	UdpAddr        *net.UDPAddr //当前udp地址
 	TcpConn        *net.TCPConn //当前tcp连接
 	LastActiveTime time.Time
@@ -135,12 +135,12 @@ type Participant struct {
 }
 
 type Session struct {
-	Id           uint64
+	Id           int64
 	Type         int
-	Participants map[uint64]*Participant
+	Participants map[int64]*Participant
 }
 
-func NewSession(id uint64) *Session {
+func NewSession(id int64) *Session {
 	session := &Session{
 		Id: id,
 	}
@@ -150,12 +150,12 @@ func NewSession(id uint64) *Session {
 
 //待定。。。
 type Sessions struct {
-	sessions map[uint64][]*Session
+	sessions map[int64][]*Session
 }
 
 func NewSessions() *Sessions {
 	s := &Sessions{
-		sessions: make(map[uint64][]*Session),
+		sessions: make(map[int64][]*Session),
 	}
 	return s
 }

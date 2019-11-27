@@ -13,12 +13,12 @@ import (
 )
 
 type User struct {
-	Uid                uint64
+	Uid                int64
 	UdpAddr           *net.UDPAddr
 	LastActiveTime     time.Time
 }
 
-func NewUser(id uint64) *User {
+func NewUser(id int64) *User {
 	user := &User{
 		Uid: id,
 	}

@@ -21,8 +21,8 @@ import (
 
 type Service struct {
 	config          *Config
-	sessions        map[uint64]*Session
-	users           map[uint64]*User
+	sessions         map[int64]*Session
+	users            map[int64]*User
 	storage         *Storage
 	udp_server      *UdpServer
 	tcp_server      *TcpServer
@@ -38,8 +38,8 @@ type Service struct {
 func NewService(config *Config) *Service {
 	service := &Service{
 		config:          config,
-		sessions:        make(map[uint64]*Session),
-		users:           make(map[uint64]*User),
+		sessions:        make(map[int64]*Session),
+		users:           make(map[int64]*User),
 		storage:         NewStorage(),
 		packetReceiveCh: make(chan *ReceivedPacket, 10),
 		isRunning:       false,
@@ -166,7 +166,7 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 	session := s.sessions[msg.To]
 	if session == nil {
 		session = NewSession(msg.To)
-		session.Participants = make(map[uint64]*Participant)
+		session.Participants = make(map[int64]*Participant)
 		s.sessions[msg.To] = session
 	}
 
@@ -191,7 +191,7 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 		//如果udp addr有变化，则向双发发布各自的外网地址
 		//todo
 		type PInfo struct {
-			Id  uint64
+			Id  int64
 			Udp string
 		}
 		turnInfo := make([]PInfo, 0)

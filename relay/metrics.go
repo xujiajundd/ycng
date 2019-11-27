@@ -16,14 +16,14 @@ import (
 const StatBufferSize = 120
 
 type MetrixDataUp struct {
-	Tid    uint8
-	Bytes  int32
-	Times   int16
-	Bandwidth  int32
-	PShould    int16
-	PRecv      int16
+	Tid               uint8
+	Bytes             int32
+	Times             int16
+	Bandwidth         int32
+	PShould           int16
+	PRecv             int16
 	LastSendTimestamp int16
-	Rdelay     uint8
+	Rdelay            uint8
 }
 
 func (md *MetrixDataUp) Marshal() []byte {
@@ -52,17 +52,17 @@ type UmsgStat struct {
 }
 
 type Metrics struct {
-	stat          [StatBufferSize]UmsgStat
-	pos           int
-	lastTimestamp int64
+	stat             [StatBufferSize]UmsgStat
+	pos              int
+	lastTimestamp    int64
 	lastTimestampRTT int64
 }
 
 func NewMetrics() *Metrics {
 	metrics := &Metrics{
-		stat:          [StatBufferSize]UmsgStat{},
-		pos:           0,
-		lastTimestamp: time.Now().UnixNano(),
+		stat:             [StatBufferSize]UmsgStat{},
+		pos:              0,
+		lastTimestamp:    time.Now().UnixNano(),
 		lastTimestampRTT: time.Now().UnixNano(),
 	}
 
@@ -70,7 +70,7 @@ func NewMetrics() *Metrics {
 }
 
 func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixDataUp) {
-	var dataUp  *MetrixDataUp
+	var dataUp *MetrixDataUp
 	dataUp = nil
 
 	m.stat[m.pos].paired = false
@@ -81,7 +81,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 	m.stat[m.pos].timestamp = currentTimestamp
 
 	m.pos++
-	if m.pos >= StatBufferSize || (currentTimestamp-m.lastTimestamp) > int64(250 * time.Millisecond) && m.pos > 30 {
+	if m.pos >= StatBufferSize || (currentTimestamp-m.lastTimestamp) > int64(250*time.Millisecond) && m.pos > 30 {
 		m.lastTimestamp = currentTimestamp
 		minSeq := int16(0)
 		maxSeq := int16(0)
@@ -136,7 +136,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 		packetRecv := m.pos - packetDup
 		totalTime = int((m.stat[m.pos-1].timestamp - m.stat[0].timestamp) / 1000000) //毫秒时间
 
-		packetShould := 2*(maxSeq-minSeq)
+		packetShould := 2 * (maxSeq - minSeq)
 		if packetShould < 0 || (minSeq == 0 && maxSeq == 0) {
 			packetShould = 0
 		}
@@ -163,7 +163,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 		//m.pos = 0  //上一批的最后5个，在下一批继续用于计算，在间隙性分批收包的情况下，有助于计算带宽
 		reuse := 20
 		if reuse < m.pos {
-			for i:=0; i<reuse; i++ {
+			for i := 0; i < reuse; i++ {
 				m.stat[i] = m.stat[m.pos-reuse+i]
 				m.stat[i].paired = false
 			}
@@ -174,6 +174,6 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 	if dataUp != nil {
 		return true, dataUp
 	} else {
-	    return false, nil
+		return false, nil
 	}
 }

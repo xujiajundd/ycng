@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -25,14 +24,14 @@ import (
 )
 
 const (
-	SessionManagerUserId = 0xffffffffffffffff
+	SessionManagerUserId = -1
 )
 
 type SessionManager struct {
-	sessions     map[uint64]*Session
+	sessions     map[int64]*Session
 	relays       []string
 	pushkit      *Pushkit
-	userTokens   map[uint64]*PushToken
+	userTokens   map[int64]*PushToken
 	saddr        string
 	conn         *net.UDPConn
 	subscriberCh chan *relay.ReceivedPacket
@@ -46,7 +45,7 @@ type SessionManager struct {
 
 func NewSessionManager() *SessionManager {
 	sm := &SessionManager{
-		sessions:     make(map[uint64]*Session),
+		sessions:     make(map[int64]*Session),
 		saddr:        ":20001",
 		subscriberCh: make(chan *relay.ReceivedPacket),
 		dedup:        utils.NewLRU(100, nil),
@@ -56,7 +55,7 @@ func NewSessionManager() *SessionManager {
 	}
 	sm.GetRelays()
 	sm.pushkit = NewPushkit()
-	sm.userTokens = make(map[uint64]*PushToken)
+	sm.userTokens = make(map[int64]*PushToken)
 	return sm
 }
 
@@ -191,11 +190,11 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 		return
 	}
 
-	if (signal.Signal == YCKCallSignalTypeVoipTokenReg) {
+	if signal.Signal == YCKCallSignalTypeVoipTokenReg {
 		ptoken := NewPushToken(signal.From, signal.Info["token"].(string), signal.Info["platform"].(string))
 		sm.userTokens[signal.From] = ptoken
 		logging.Logger.Info("voip token:", signal.Info["token"].(string), " registered for user:", signal.From)
-		return;
+		return
 	}
 
 	/*
@@ -210,9 +209,9 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 
 	if signal.Signal == YCKCallSignalTypeSidRequest {
 		//生成一个与现存不重复的sid
-		var sid uint64
+		var sid int64
 		for {
-			sid = rand.Uint64()
+			sid = rand.Int63()
 			if sm.sessions[sid] == nil {
 				break
 			}
@@ -368,7 +367,6 @@ func (sm *SessionManager) handleMessageUserSignal(msg *relay.Message) {
 				}
 			}
 
-
 			if pf == nil {
 				pf = NewParticipant(signal.From)
 				session.Participants[signal.From] = pf
@@ -453,7 +451,8 @@ func (sm *SessionManager) processSignalOp(signal *Signal, session *Session) {
 	if okOp && okMem {
 		if op == "invite" {
 			for _, value := range members {
-				mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
+				//mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
+				mem, err := value.(json.Number).Int64()
 				if err == nil {
 					p := session.Participants[mem]
 					if p == nil {
@@ -495,7 +494,8 @@ func (sm *SessionManager) processSignalOp(signal *Signal, session *Session) {
 			}
 		} else if op == "kick" {
 			for _, value := range members {
-				mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
+				//mem, err := strconv.ParseUint(value.(json.Number).String(), 10, 64)
+				mem, err := value.(json.Number).Int64()
 				if err == nil {
 					p := session.Participants[mem]
 					if p == nil {
@@ -533,7 +533,7 @@ func (sm *SessionManager) notifyMemberStateChange(session *Session) {
 
 	//把状态通知所有参与方, 这个消息需要push么？
 	info := make(map[string]interface{})
-	pState := make(map[uint64]map[string]uint16)
+	pState := make(map[int64]map[string]uint16)
 	for _, p := range session.Participants {
 		key := p.Uid //strconv.FormatUint(p.Uid, 10)
 		value := make(map[string]uint16)
@@ -586,14 +586,14 @@ func (sm *SessionManager) sendSignalMessageByRelays(msg *relay.Message) {
 }
 
 func (sm *SessionManager) sendSignalMessageByPushkit(msg *relay.Message) {
-    //通过msg.to，得到其token
-    token := sm.userTokens[msg.To]
+	//通过msg.to，得到其token
+	token := sm.userTokens[msg.To]
 
-    //msg.payload直接发送，本来就是json串。但这样push只能接收signal了。。。不大利于将来扩展
-    payload := msg.Payload
+	//msg.payload直接发送，本来就是json串。但这样push只能接收signal了。。。不大利于将来扩展
+	payload := msg.Payload
 
-    if token != nil && len(token.Token)>0 && payload != nil {
-    	if token.Platform == "ios" {
+	if token != nil && len(token.Token) > 0 && payload != nil {
+		if token.Platform == "ios" {
 			sm.pushkit.Push(token.Token, payload)
 			logging.Logger.Info("push to:", msg.To, " with token:", token)
 		}
@@ -605,11 +605,10 @@ func (sm *SessionManager) sendSignalMessageByPushkit(msg *relay.Message) {
 func (sm *SessionManager) sendSignalMessage(msg *relay.Message, needPush bool) {
 	sm.sendSignalMessageByRelays(msg)
 	//todo：通过push平台再发
-	if (needPush) {
-		sm.sendSignalMessageByPushkit(msg)
+	if needPush {
+		go sm.sendSignalMessageByPushkit(msg)
 	}
 }
-
 
 func (sm *SessionManager) GetRelays() {
 	sm.relays = []string{

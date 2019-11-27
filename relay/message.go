@@ -60,9 +60,9 @@ type Message struct {
 	Version   uint16
 	Flags     uint16
 	MsgType   uint8
-	From      uint64
-	To        uint64
-	Dest      uint64
+	From      int64
+	To        int64
+	Dest      int64
 	Payload   []byte
 	Extra     []byte
 }
@@ -74,7 +74,7 @@ type ReceivedPacket struct {
 	Time        int64
 }
 
-func NewMessage(msgType uint8, from uint64, to uint64, dest uint64, payload []byte, extra []byte) *Message {
+func NewMessage(msgType uint8, from int64, to int64, dest int64, payload []byte, extra []byte) *Message {
 	msg := &Message{
 		Tseq:      0,
 		Tid:       0,
@@ -144,17 +144,17 @@ func (m *Message) Unmarshal(data []byte) error {
 	p += 1
 
 	if len >= p+8 {
-		m.From = binary.BigEndian.Uint64(data[p : p+8])
+		m.From = int64(binary.BigEndian.Uint64(data[p : p+8]))
 		p += 8
 	}
 	if len >= p+8 {
-		m.To = binary.BigEndian.Uint64(data[p : p+8])
+		m.To = int64(binary.BigEndian.Uint64(data[p : p+8]))
 		p += 8
 	}
 
 	if m.HasFlag(UdpMessageFlagDest) {
 		if len >= p+8 {
-			m.Dest = binary.BigEndian.Uint64(data[p : p+8])
+			m.Dest = int64(binary.BigEndian.Uint64(data[p : p+8]))
 			p += 8
 		}
 	}
@@ -215,12 +215,12 @@ func (m *Message) Marshal() []byte {
 	p += 2
 	buf[p] = m.MsgType
 	p += 1
-	binary.BigEndian.PutUint64(buf[p:p+8], m.From)
+	binary.BigEndian.PutUint64(buf[p:p+8], uint64(m.From))
 	p += 8
-	binary.BigEndian.PutUint64(buf[p:p+8], m.To)
+	binary.BigEndian.PutUint64(buf[p:p+8], uint64(m.To))
 	p += 8
 	if m.HasFlag(UdpMessageFlagDest) {
-		binary.BigEndian.PutUint64(buf[p:p+8], m.Dest)
+		binary.BigEndian.PutUint64(buf[p:p+8], uint64(m.Dest))
 		p += 8
 	}
 	binary.BigEndian.PutUint16(buf[p:p+2], uint16(len(m.Payload)))

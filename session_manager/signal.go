@@ -32,16 +32,16 @@ const (
 	YCKCallSignalTypeMemberState        = 21
 	YCKCallSignalTypeMemberStateRequest = 22
 
-	YCKCallSignalTypeVoipTokenReg       = 100   //严格来讲，这个不是一个call信令，姑且用之。。。
+	YCKCallSignalTypeVoipTokenReg = 100 //严格来讲，这个不是一个call信令，姑且用之。。。
 )
 
 type Signal struct {
 	Category  uint16                 `json:"c"`
 	Signal    uint16                 `json:"g"`
-	Timestamp uint64                 `json:"ts"`
-	SessionId uint64                 `json:"s"`
-	From      uint64                 `json:"f"`
-	To        uint64                 `json:"t"`
+	Timestamp int64                  `json:"ts"`
+	SessionId int64                  `json:"s"`
+	From      int64                  `json:"f"`
+	To        int64                  `json:"t"`
 	Ttl       uint32                 `json:"l"`
 	Option    map[string]interface{} `json:"o,omitempty"`
 	Info      map[string]interface{} `json:"i,omitempty"`
@@ -53,10 +53,10 @@ func NewSignalTemp() *Signal {
 	return s
 }
 
-func NewSignal(signal uint16, from uint64, to uint64, sid uint64) *Signal {
+func NewSignal(signal uint16, from int64, to int64, sid int64) *Signal {
 	s := NewSignalTemp()
 	s.Category = YCKSignalCategoryCall
-	s.Timestamp = uint64(time.Now().UnixNano()) / 100000
+	s.Timestamp = int64(time.Now().UnixNano()) / 100000
 	s.Signal = signal
 	s.From = from
 	s.To = to

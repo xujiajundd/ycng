@@ -35,7 +35,7 @@ const (
 )
 
 type Participant struct {
-	Uid           uint64
+	Uid           int64
 	State         uint16
 	Event         uint16
 	LastStateTime time.Time
@@ -44,7 +44,7 @@ type Participant struct {
 	//option,info,device info之类信息需要补充
 }
 
-func NewParticipant(uid uint64) *Participant {
+func NewParticipant(uid int64) *Participant {
 	p := &Participant{
 		Uid:           uid,
 		State:         YCKParticipantStateIdle,
@@ -75,19 +75,19 @@ func (p *Participant) setCallingTimeout(duration time.Duration, f func()) {
 }
 
 type Session struct {
-	Sid            uint64
+	Sid            int64
 	Mode           int
-	Participants   map[uint64]*Participant
+	Participants   map[int64]*Participant
 	Relays         []string
 	LastActiveTime time.Time
 	Nickname       string   //这个多方通话的昵称，在invite其他member的信令消息中应该需要用到
 }
 
-func NewSession(sid uint64) *Session {
+func NewSession(sid int64) *Session {
 	s := &Session{
 		Sid:            sid,
 		Mode:           YCKCallModeUndecided,
-		Participants:   make(map[uint64]*Participant),
+		Participants:   make(map[int64]*Participant),
 		LastActiveTime: time.Now(),
 	}
 	return s

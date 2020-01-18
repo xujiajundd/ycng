@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	SessionManagerUserId = -1
+	SessionManagerUserId = -2
 )
 
 type SessionManager struct {

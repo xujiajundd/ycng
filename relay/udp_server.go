@@ -47,12 +47,17 @@ func (u *UdpServer) Start() {
 }
 
 func (u *UdpServer) handleClient() {
-	var buf [2048]byte
+	var buf [65536]byte
 
 	for {
 		size, addr, err := u.conn.ReadFromUDP(buf[0:])
 		if err != nil {
 			logging.Logger.Error("error ReadFromUDP ", err)
+			continue
+		}
+
+		if size <= 2 {
+			logging.Logger.Error("error udp packet with size <= 2")
 			continue
 		}
 

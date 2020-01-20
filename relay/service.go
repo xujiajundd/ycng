@@ -116,7 +116,7 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 
 	switch msg.MsgType {
 	case UdpMessageTypeNoop:
-		s.handleMessageNoop(msg)
+		s.handleMessageNoop(msg, packet)
 
 	case UdpMessageTypeTurnReg:
 		s.handleMessageTurnReg(msg, packet)
@@ -155,8 +155,9 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 	}
 }
 
-func (s *Service) handleMessageNoop(msg *Message) {
-	logging.Logger.Info("received noop")
+func (s *Service) handleMessageNoop(msg *Message, packet *ReceivedPacket) {
+	//logging.Logger.Info("received noop"), 收到noop，原样回复
+	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), packet.FromUdpAddr)
 }
 
 func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {

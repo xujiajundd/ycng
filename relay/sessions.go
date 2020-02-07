@@ -123,15 +123,16 @@ func (qo *QueueOut) ProcessNack(nack []byte) (n_tries uint8, isIframe bool, pack
 }
 
 type Participant struct {
-	Id             int64        //8 byte participant account id
-	UdpAddr        *net.UDPAddr //当前udp地址
-	TcpConn        *net.TCPConn //当前tcp连接
-	LastActiveTime time.Time
-	Metrics        *Metrics //针对每个participants的in/out metrics
-	PendingMsg     *Message
-	PendingExtra   *MetrixDataUp
-	VideoQueueOut  *QueueOut
-	Tseq           int16
+	Id              int64        //8 byte participant account id
+	UdpAddr         *net.UDPAddr //当前udp地址
+	TcpConn         *net.TCPConn //当前tcp连接
+	LastActiveTime  time.Time
+	Metrics         *Metrics //针对每个participants的in/out metrics
+	PendingMsg      *Message
+	PendingExtra    *MetrixDataUp
+	VideoQueueOut   *QueueOut
+	Tseq            int16
+	OnlyAcceptAudio bool
 }
 
 type Session struct {

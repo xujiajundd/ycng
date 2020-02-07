@@ -144,6 +144,7 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 	case UdpMessageTypeVideoOnlyIFrame:
 
 	case UdpMessageTypeVideoOnlyAudio:
+		s.handleMessageVideoOnlyAudio(msg)
 
 	case UdpMessageTypeUserReg:
 		s.handleMessageUserReg(msg, packet)
@@ -177,6 +178,7 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 		participant = &Participant{Id: msg.From, UdpAddr: packet.FromUdpAddr, TcpConn: nil}
 		participant.Metrics = NewMetrics()
 		participant.VideoQueueOut = NewQueueOut()
+		participant.OnlyAcceptAudio = false
 		session.Participants[participant.Id] = participant
 	}
 	participant.UdpAddr = packet.FromUdpAddr
@@ -318,6 +320,9 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 				if msg.Dest != 0 && p.Id != msg.Dest {
 					continue
 				}
+				if p.OnlyAcceptAudio {
+					continue
+				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
@@ -374,6 +379,9 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 			participant.VideoQueueOut.AddItem(true, msg.Payload)
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
+					continue
+				}
+				if p.OnlyAcceptAudio {
 					continue
 				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
@@ -508,6 +516,31 @@ func (s *Service) askForReTurnReg(msg *Message, packet *ReceivedPacket) {
 	newMsg := NewMessage(UdpMessageTypeTurnRegNoExist, msg.From, msg.To, msg.Dest, nil, nil)
 	newMsg.Tid = msg.Tid
 	s.udp_server.SendPacket(newMsg.ObfuscatedDataOfMessage(), packet.FromUdpAddr)
+}
+
+func (s *Service) handleMessageVideoOnlyAudio(msg *Message) {
+	session := s.sessions[msg.To]
+
+	if session != nil {
+		participant := session.Participants[msg.From]
+		if participant != nil {
+            payload := msg.Payload
+            if len(payload) == 1 {
+            	stopFlag := uint8(payload[0])
+            	if stopFlag == 0 {
+            		participant.OnlyAcceptAudio = false
+				} else {
+					participant.OnlyAcceptAudio = true
+				}
+			} else {
+				logging.Logger.Info("participant", msg.From, " incorrect audio only request")
+			}
+		} else {
+			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+		}
+	} else {
+		logging.Logger.Info("session not existed ", msg.To)
+	}
 }
 
 func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {

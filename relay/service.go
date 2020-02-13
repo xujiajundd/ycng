@@ -16,14 +16,14 @@ import (
 	"github.com/xujiajundd/ycng/utils/logging"
 	"time"
 	//"github.com/xujiajundd/ycng/utils"
-	"encoding/json"
 	"bytes"
+	"encoding/json"
 )
 
 type Service struct {
 	config          *Config
-	sessions         map[int64]*Session
-	users            map[int64]*User
+	sessions        map[int64]*Session
+	users           map[int64]*User
 	storage         *Storage
 	udp_server      *UdpServer
 	tcp_server      *TcpServer
@@ -200,8 +200,8 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 		}
 		turnInfo := make([]PInfo, 0)
 		for _, p := range session.Participants {
-		    ti := PInfo{Id: p.Id, Udp:p.UdpAddr.String()}
-		    turnInfo = append(turnInfo, ti)
+			ti := PInfo{Id: p.Id, Udp: p.UdpAddr.String()}
+			turnInfo = append(turnInfo, ti)
 		}
 
 		data, err := json.Marshal(turnInfo)
@@ -260,7 +260,7 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 			participant.LastActiveTime = time.Now()
 			//如果客户端的外网地址有变化了，要更新。
 			if !bytes.Equal(participant.UdpAddr.IP, packet.FromUdpAddr.IP) || participant.UdpAddr.Port != packet.FromUdpAddr.Port {
-				logging.Logger.Warn("received packet from participant ", msg.From, " with changed udp address:", packet.FromUdpAddr.String(), "origin:", participant.UdpAddr.String())
+				logging.Logger.Warn("received packet from participant ", msg.From, " with changed udp address:", packet.FromUdpAddr.String(), " origin:", participant.UdpAddr.String())
 				participant.UdpAddr = packet.FromUdpAddr
 			}
 
@@ -280,7 +280,7 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
 							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if  delay < 250 {
+							if delay < 250 {
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
 								msg.SetFlag(UdpMessageFlagExtra)
@@ -341,7 +341,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
 							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if  delay < 250 {
+							if delay < 250 {
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
 								msg.SetFlag(UdpMessageFlagExtra)
@@ -402,7 +402,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
 							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if  delay < 250 {
+							if delay < 250 {
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
 								msg.SetFlag(UdpMessageFlagExtra)
@@ -531,11 +531,11 @@ func (s *Service) handleMessageVideoOnlyAudio(msg *Message) {
 	if session != nil {
 		participant := session.Participants[msg.From]
 		if participant != nil {
-            payload := msg.Payload
-            if len(payload) == 1 {
-            	stopFlag := uint8(payload[0])
-            	if stopFlag == 0 {
-            		participant.OnlyAcceptAudio = false
+			payload := msg.Payload
+			if len(payload) == 1 {
+				stopFlag := uint8(payload[0])
+				if stopFlag == 0 {
+					participant.OnlyAcceptAudio = false
 				} else {
 					participant.OnlyAcceptAudio = true
 				}
@@ -572,8 +572,10 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 	if user != nil {
 		user.LastActiveTime = time.Now()
 		if !bytes.Equal(user.UdpAddr.IP, packet.FromUdpAddr.IP) || user.UdpAddr.Port != packet.FromUdpAddr.Port {
-			logging.Logger.Warn("received signal from user ", msg.From, " with changed udp address:", packet.FromUdpAddr.String(), "origin:", user.UdpAddr.String())
-			user.UdpAddr = packet.FromUdpAddr
+			if msg.From != -1 { //session manager可能有多个ip地址，所以这里不予考虑
+				logging.Logger.Warn("received signal from user ", msg.From, " with changed udp address:", packet.FromUdpAddr.String(), " origin:", user.UdpAddr.String())
+				user.UdpAddr = packet.FromUdpAddr
+			}
 		}
 	}
 

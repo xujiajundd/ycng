@@ -17,6 +17,7 @@ import (
 	"time"
 	//"github.com/xujiajundd/ycng/utils"
 	"encoding/json"
+	"bytes"
 )
 
 type Service struct {
@@ -150,7 +151,7 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 		s.handleMessageUserReg(msg, packet)
 
 	case UdpMessageTypeUserSignal:
-		s.handleMessageUserSignal(msg)
+		s.handleMessageUserSignal(msg, packet)
 	default:
 		logging.Logger.Warn("unrecognized message type")
 	}
@@ -257,6 +258,12 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 		participant := session.Participants[msg.From]
 		if participant != nil {
 			participant.LastActiveTime = time.Now()
+			//如果客户端的外网地址有变化了，要更新。
+			if !bytes.Equal(participant.UdpAddr.IP, packet.FromUdpAddr.IP) || participant.UdpAddr.Port != packet.FromUdpAddr.Port {
+				logging.Logger.Warn("received packet from participant ", msg.From, " with changed udp address:", packet.FromUdpAddr.String(), "origin:", participant.UdpAddr.String())
+				participant.UdpAddr = packet.FromUdpAddr
+			}
+
 			ok, data := participant.Metrics.Process(msg, packet.Time)
 			if ok {
 				participant.PendingExtra = data
@@ -558,10 +565,19 @@ func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
 	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
 }
 
-func (s *Service) handleMessageUserSignal(msg *Message) {
+func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) {
 	logging.Logger.Info("received user signal From ", msg.From, " To ", msg.To)
 
-	user := s.users[msg.To]
+	user := s.users[msg.From]
+	if user != nil {
+		user.LastActiveTime = time.Now()
+		if !bytes.Equal(user.UdpAddr.IP, packet.FromUdpAddr.IP) || user.UdpAddr.Port != packet.FromUdpAddr.Port {
+			logging.Logger.Warn("received signal from user ", msg.From, " with changed udp address:", packet.FromUdpAddr.String(), "origin:", user.UdpAddr.String())
+			user.UdpAddr = packet.FromUdpAddr
+		}
+	}
+
+	user = s.users[msg.To]
 
 	if user != nil {
 		logging.Logger.Info("route user signal From ", msg.From, " To ", msg.To, user.UdpAddr)

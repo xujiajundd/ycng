@@ -13,8 +13,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/xujiajundd/ycng/utils/logging"
 	"time"
+
+	"github.com/xujiajundd/ycng/utils/logging"
 	//"github.com/xujiajundd/ycng/utils"
 	"bytes"
 	"encoding/json"
@@ -45,7 +46,7 @@ func NewService(config *Config) *Service {
 		packetReceiveCh: make(chan *ReceivedPacket, 10),
 		isRunning:       false,
 		stop:            make(chan struct{}),
-		ticker:          time.NewTicker(20 * time.Second),
+		ticker:          time.NewTicker(60 * time.Second),
 	}
 
 	service.udp_server = NewUdpServer(config, service.packetReceiveCh)
@@ -158,12 +159,12 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 }
 
 func (s *Service) handleMessageNoop(msg *Message, packet *ReceivedPacket) {
-	//logging.Logger.Info("received noop"), 收到noop，原样回复
+	//logging.Logger.Info("received noop"), 收到noop，原样回复, 这个目前只在rtt测试的时候用到
 	s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), packet.FromUdpAddr)
 }
 
 func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received turn reg From ", msg.From, " for session ", msg.To)
+	logging.Logger.Info("received turn reg From ", msg.From, "<", packet.FromUdpAddr.String(), ">", " for session ", msg.To)
 
 	//检查当前session是否存在
 	session := s.sessions[msg.To]
@@ -460,7 +461,7 @@ func (s *Service) handleMessageVideoASkForIFrame(msg *Message, packet *ReceivedP
 }
 
 func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received nack From ", msg.From, " To ", msg.To, " Dest ", msg.Dest)
+	//logging.Logger.Info("received nack From ", msg.From, " To ", msg.To, " Dest ", msg.Dest)
 
 	session := s.sessions[msg.To]
 
@@ -474,7 +475,9 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			if dest == nil {
 				return
 			}
-			n_tries, isIFrame, packets := dest.VideoQueueOut.ProcessNack(nack)
+			_, n_tries, isIFrame, packets := dest.VideoQueueOut.ProcessNack(nack)
+			//logging.Logger.Info("process nack from ", msg.From, " to sid ", msg.To, " dest ", msg.Dest, " seq ", seqid, " n_tries ", n_tries, " packets ", len(packets))
+
 			//从Dest的QueueOut中查找是否可以响应nack
 			if packets != nil && len(packets) > 0 {
 				for i := 0; i < len(packets); i++ {
@@ -551,7 +554,7 @@ func (s *Service) handleMessageVideoOnlyAudio(msg *Message) {
 }
 
 func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received user reg From ", msg.From, " To ", msg.To, packet.FromUdpAddr)
+	logging.Logger.Info("received user reg From ", msg.From, "<", packet.FromUdpAddr.String(), ">", " To ", msg.To)
 
 	user := s.users[msg.From]
 	if user == nil {
@@ -566,7 +569,7 @@ func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
 }
 
 func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received user signal From ", msg.From, " To ", msg.To)
+	logging.Logger.Info("received user signal From ", msg.From, "<", packet.FromUdpAddr.String(), ">", " To ", msg.To)
 
 	user := s.users[msg.From]
 	if user != nil {
@@ -577,13 +580,24 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 				user.UdpAddr = packet.FromUdpAddr
 			}
 		}
+	} else {
+		logging.Logger.Warn("user ", msg.From, " not existed")
 	}
 
 	user = s.users[msg.To]
 
 	if user != nil {
-		logging.Logger.Info("route user signal From ", msg.From, " To ", msg.To, user.UdpAddr)
 		s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
+
+		signal := NewSignalTemp()
+		err := signal.Unmarshal(msg.Payload)
+		if err != nil {
+			logging.Logger.Warn("signal unmarshal error:", err)
+			return
+		}
+		logging.Logger.Info("route user signal", signal.String(), " From ", msg.From, " To ", msg.To, "<", user.UdpAddr.String(), ">")
+	} else {
+		logging.Logger.Warn("user ", msg.To, " not existed")
 	}
 }
 
@@ -591,7 +605,7 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 func (s *Service) handleTicker(now time.Time) {
 	for skey, session := range s.sessions {
 		for pkey, participant := range session.Participants {
-			if now.Sub(participant.LastActiveTime) > 60*time.Second {
+			if now.Sub(participant.LastActiveTime) > 120*time.Second {
 				delete(session.Participants, pkey)
 				logging.Logger.Info("delete participant ", pkey, " From session ", skey, " for inactive 60s")
 			}

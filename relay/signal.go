@@ -5,7 +5,7 @@
  *
  */
 
-package session_manager
+package relay
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/xujiajundd/ycng/utils/logging"
+	"fmt"
 )
 
 const (
@@ -43,6 +44,7 @@ type Signal struct {
 	From      int64                  `json:"f"`
 	To        int64                  `json:"t"`
 	Ttl       uint32                 `json:"l"`
+	Uuid      string                 `json:"id"`
 	Option    map[string]interface{} `json:"o,omitempty"`
 	Info      map[string]interface{} `json:"i,omitempty"`
 }
@@ -62,6 +64,7 @@ func NewSignal(signal uint16, from int64, to int64, sid int64) *Signal {
 	s.To = to
 	s.SessionId = sid
 	s.Ttl = 60000
+	s.Uuid = ""
 	return s
 }
 
@@ -82,4 +85,10 @@ func (s *Signal) Marshal() ([]byte, error) {
 	data, err := json.Marshal(s)
 	logging.Logger.Info("send:", string(data))
 	return data, err
+}
+
+func (s *Signal) String() string {
+	str := fmt.Sprintf("<C:%d Signal:%d Sid:%d UUID:%v>", s.Category, s.Signal, s.SessionId, s.Uuid)
+
+	return str;
 }

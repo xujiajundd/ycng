@@ -56,6 +56,9 @@ type Metrics struct {
 	pos              int
 	lastTimestamp    int64
 	lastTimestampRTT int64
+	lastLogPrint     int64
+	sumPacketShould  int
+	sumPacketRecv    int
 }
 
 func NewMetrics() *Metrics {
@@ -64,6 +67,9 @@ func NewMetrics() *Metrics {
 		pos:              0,
 		lastTimestamp:    time.Now().UnixNano(),
 		lastTimestampRTT: time.Now().UnixNano(),
+		lastLogPrint:     time.Now().UnixNano(),
+		sumPacketShould:  0,
+		sumPacketRecv:    0,
 	}
 
 	return metrics
@@ -146,7 +152,15 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 			bandwidth = int(8 * int64(accBytes) * int64(time.Second) / int64(accTimes) / 1024)
 		}
 
-		logging.Logger.Info(msg.From, " 应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
+		if (currentTimestamp-m.lastLogPrint) > int64(3*time.Second) {
+			m.lastLogPrint = currentTimestamp
+			logging.Logger.Info(msg.From, " 三秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
+			m.sumPacketShould = 0
+			m.sumPacketRecv = 0
+		} else {
+			m.sumPacketShould += int(packetShould)
+			m.sumPacketRecv += packetRecv
+		}
 
 		if packetShould > 0 {
 			dataUp = &MetrixDataUp{}

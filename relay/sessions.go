@@ -79,13 +79,13 @@ func (qo *QueueOut) AddItem(isIFrame bool, payload []byte) {
 	packet.Esi = binary.BigEndian.Uint16(payload[9:11])
 }
 
-func (qo *QueueOut) ProcessNack(nack []byte) (n_tries uint8, isIframe bool, packets [][]byte) {
+func (qo *QueueOut) ProcessNack(nack []byte) (seqid int16, n_tries uint8, isIframe bool, packets [][]byte) {
 	packets = nil
 	if len(nack) < 4 {
 		logging.Logger.Warn("incorrect nack payload size:", len(nack))
 		return
 	}
-	seqid := int16(binary.BigEndian.Uint16(nack[0:2]))
+	seqid = int16(binary.BigEndian.Uint16(nack[0:2]))
 	n_tries = uint8(nack[2])
 	block_num := uint8(nack[3])
 	var blks_map []uint64
@@ -118,7 +118,7 @@ func (qo *QueueOut) ProcessNack(nack []byte) (n_tries uint8, isIframe bool, pack
 		}
 	}
 
-	logging.Logger.Info("nack for seq:", seqid, " n_tries:", n_tries, " blk_num:", block_num, " packets:", len(packets))
+	//logging.Logger.Info("process nack for seq:", seqid, " n_tries:", n_tries, " blk_num:", block_num, " packets:", len(packets))
 	return
 }
 

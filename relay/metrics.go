@@ -154,6 +154,8 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 
 		if (currentTimestamp-m.lastLogPrint) > int64(3*time.Second) {
 			m.lastLogPrint = currentTimestamp
+			m.sumPacketShould += int(packetShould)
+			m.sumPacketRecv += packetRecv
 			logging.Logger.Info(msg.From, " 三秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
 			m.sumPacketShould = 0
 			m.sumPacketRecv = 0

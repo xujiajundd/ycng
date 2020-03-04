@@ -32,6 +32,9 @@ const (
 	YCKCallSignalTypeMemberOp           = 20
 	YCKCallSignalTypeMemberState        = 21
 	YCKCallSignalTypeMemberStateRequest = 22
+	YCKCallSignalTypeExtensionOp        = 24
+	YCKCallSignalTypeStateSync          = 30
+	YCKCallSignalTypeStateInfo          = 31
 
 	YCKCallSignalTypeVoipTokenReg = 100 //严格来讲，这个不是一个call信令，姑且用之。。。
 )
@@ -75,8 +78,8 @@ func (s *Signal) Unmarshal(data []byte) error {
 	if err != nil {
 		return err
 	}
-	logging.Logger.Info(string(data))
-	logging.Logger.Info("receive:", s)
+	//logging.Logger.Info(string(data))
+	//logging.Logger.Info("receive:", s)
 
 	return nil
 }

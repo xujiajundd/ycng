@@ -569,7 +569,16 @@ func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
 }
 
 func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received user signal From ", msg.From, "<", packet.FromUdpAddr.String(), ">", " To ", msg.To)
+	signal := NewSignalTemp()
+	err := signal.Unmarshal(msg.Payload)
+	if err != nil {
+		logging.Logger.Warn("signal unmarshal error:", err)
+	}
+
+	//State sync和state info两个信令太多，不打在日志之中了。
+	if signal.Signal != YCKCallSignalTypeStateSync && signal.Signal != YCKCallSignalTypeStateInfo {
+		logging.Logger.Info("received user signal From ", msg.From, "<", packet.FromUdpAddr.String(), ">", " To ", msg.To)
+	}
 
 	user := s.users[msg.From]
 	if user != nil {
@@ -589,13 +598,9 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 	if user != nil {
 		s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
 
-		signal := NewSignalTemp()
-		err := signal.Unmarshal(msg.Payload)
-		if err != nil {
-			logging.Logger.Warn("signal unmarshal error:", err)
-			return
+		if signal.Signal != YCKCallSignalTypeStateSync && signal.Signal != YCKCallSignalTypeStateInfo {
+			logging.Logger.Info("route user signal", signal.String(), " From ", msg.From, " To ", msg.To, "<", user.UdpAddr.String(), ">")
 		}
-		logging.Logger.Info("route user signal", signal.String(), " From ", msg.From, " To ", msg.To, "<", user.UdpAddr.String(), ">")
 	} else {
 		logging.Logger.Warn("user ", msg.To, " not existed")
 	}

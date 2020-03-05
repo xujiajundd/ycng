@@ -57,8 +57,14 @@ type Metrics struct {
 	lastTimestamp    int64
 	lastTimestampRTT int64
 	lastLogPrint     int64
+	lastNackPrint    int64
 	sumPacketShould  int
 	sumPacketRecv    int
+	sumNack          int
+	sumNack1         int
+	sumNack2         int
+	sumNack3         int
+	sumPacketsNum    int
 }
 
 func NewMetrics() *Metrics {
@@ -68,8 +74,14 @@ func NewMetrics() *Metrics {
 		lastTimestamp:    time.Now().UnixNano(),
 		lastTimestampRTT: time.Now().UnixNano(),
 		lastLogPrint:     time.Now().UnixNano(),
+		lastNackPrint:    time.Now().UnixNano(),
 		sumPacketShould:  0,
 		sumPacketRecv:    0,
+		sumNack:          0,
+		sumNack1:         0,
+		sumNack2:         0,
+		sumNack3:         0,
+		sumPacketsNum:    0,
 	}
 
 	return metrics
@@ -152,16 +164,13 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 			bandwidth = int(8 * int64(accBytes) * int64(time.Second) / int64(accTimes) / 1024)
 		}
 
-		if (currentTimestamp-m.lastLogPrint) > int64(3*time.Second) {
+		m.sumPacketShould += int(packetShould)
+		m.sumPacketRecv += packetRecv
+		if (currentTimestamp - m.lastLogPrint) > int64(10*time.Second) {
 			m.lastLogPrint = currentTimestamp
-			m.sumPacketShould += int(packetShould)
-			m.sumPacketRecv += packetRecv
-			logging.Logger.Info(msg.From, " 三秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
+			logging.Logger.Info(msg.From, " 10秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
 			m.sumPacketShould = 0
 			m.sumPacketRecv = 0
-		} else {
-			m.sumPacketShould += int(packetShould)
-			m.sumPacketRecv += packetRecv
 		}
 
 		if packetShould > 0 {
@@ -191,5 +200,30 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 		return true, dataUp
 	} else {
 		return false, nil
+	}
+}
+
+func (m *Metrics) ProcessNack(msg *Message, seqid int16, n_tries uint8, packets_num int) {
+	m.sumNack++
+    if n_tries == 1 {
+		m.sumNack1++
+	} else if n_tries == 2 {
+		m.sumNack2++
+	} else if n_tries == 3 {
+		m.sumNack3++
+	}
+	m.sumPacketsNum += packets_num
+
+	currentTimeStamp := time.Now().UnixNano()
+	if (currentTimeStamp - m.lastNackPrint) > int64(10*time.Second) {
+		s := (currentTimeStamp - m.lastNackPrint) / int64(time.Second)
+		logging.Logger.Info(msg.From, " Nack请求", s, "秒汇总:", m.sumNack, "(", m.sumNack1, ", ", m.sumNack2, ", ", m.sumNack3, ")", " 直接回复包数：", m.sumPacketsNum)
+
+		m.lastNackPrint = currentTimeStamp
+		m.sumNack = 0
+		m.sumNack1 = 0
+		m.sumNack2 = 0
+		m.sumNack3 = 0
+		m.sumPacketsNum = 0
 	}
 }

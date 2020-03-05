@@ -112,7 +112,7 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 	//其实单线程也可以，如果server的资源有富余，可以起多个relay实例。
 	msg, err := NewMessageFromObfuscatedData(packet.Body)
 	if err != nil {
-		logging.Logger.Warn("error:", err)
+		logging.Logger.Warn("error:", err, " for packet received from <", packet.FromUdpAddr.String(), ">")
 		return
 	}
 
@@ -306,7 +306,7 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
-		logging.Logger.Info("session not existed ", msg.To)
+		logging.Logger.Info("session ", msg.To, " not existed for audio packet from ", msg.From)
 		s.askForReTurnReg(msg, packet)
 	}
 }
@@ -367,7 +367,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
-		logging.Logger.Info("session not existed ", msg.To)
+		logging.Logger.Info("session ", msg.To, " not existed for video packet from ", msg.From)
 		s.askForReTurnReg(msg, packet)
 	}
 }
@@ -428,7 +428,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
-		logging.Logger.Info("session not existed ", msg.To)
+		logging.Logger.Info("session ", msg.To, " not existed for video packet from ", msg.From)
 		s.askForReTurnReg(msg, packet)
 	}
 }
@@ -455,7 +455,7 @@ func (s *Service) handleMessageVideoASkForIFrame(msg *Message, packet *ReceivedP
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
-		logging.Logger.Info("session not existed ", msg.To)
+		logging.Logger.Info("session ", msg.To, " not existed for ask iframe packet from ", msg.From)
 		s.askForReTurnReg(msg, packet)
 	}
 }
@@ -475,8 +475,11 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			if dest == nil {
 				return
 			}
-			_, n_tries, isIFrame, packets := dest.VideoQueueOut.ProcessNack(nack)
+			seqid, n_tries, isIFrame, packets := dest.VideoQueueOut.ProcessNack(nack, msg.From)
 			//logging.Logger.Info("process nack from ", msg.From, " to sid ", msg.To, " dest ", msg.Dest, " seq ", seqid, " n_tries ", n_tries, " packets ", len(packets))
+
+			//报告给metrix汇总打日志
+             participant.Metrics.ProcessNack(msg, seqid, n_tries, len(packets))
 
 			//从Dest的QueueOut中查找是否可以响应nack
 			if packets != nil && len(packets) > 0 {
@@ -517,7 +520,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
-		logging.Logger.Info("session not existed ", msg.To)
+		logging.Logger.Info("session ", msg.To, " not existed for nack packet from ", msg.From)
 		s.askForReTurnReg(msg, packet)
 	}
 }
@@ -549,7 +552,7 @@ func (s *Service) handleMessageVideoOnlyAudio(msg *Message) {
 			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
 		}
 	} else {
-		logging.Logger.Info("session not existed ", msg.To)
+		logging.Logger.Info("session ", msg.To, " not existed for audio only packet from ", msg.From)
 	}
 }
 
@@ -590,7 +593,7 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 			}
 		}
 	} else {
-		logging.Logger.Warn("user ", msg.From, " not existed")
+		logging.Logger.Warn("user ", msg.From, " not existed in signal msg.from")
 	}
 
 	user = s.users[msg.To]
@@ -602,22 +605,30 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 			logging.Logger.Info("route user signal", signal.String(), " From ", msg.From, " To ", msg.To, "<", user.UdpAddr.String(), ">")
 		}
 	} else {
-		logging.Logger.Warn("user ", msg.To, " not existed")
+		logging.Logger.Warn("user ", msg.To, " not existed in signal msg.to")
 	}
 }
 
 //清理过期的session和user
+var tickCount = 0
 func (s *Service) handleTicker(now time.Time) {
+	numSessions := 0
+	numParticipants := 0
+	numRegUsers := 0
 	for skey, session := range s.sessions {
 		for pkey, participant := range session.Participants {
 			if now.Sub(participant.LastActiveTime) > 120*time.Second {
 				delete(session.Participants, pkey)
-				logging.Logger.Info("delete participant ", pkey, " From session ", skey, " for inactive 60s")
+				logging.Logger.Info("delete participant ", pkey, " From session ", skey, " for inactive 120s")
+			} else {
+				numParticipants++
 			}
 		}
 		if len(session.Participants) == 0 {
 			delete(s.sessions, skey)
 			logging.Logger.Info("delete session ", skey, " for all participants quit")
+		} else {
+			numSessions++
 		}
 	}
 
@@ -625,22 +636,28 @@ func (s *Service) handleTicker(now time.Time) {
 		if now.Sub(user.LastActiveTime) > 600*time.Second {
 			delete(s.users, ukey)
 			logging.Logger.Info("delete user ", ukey, " for inactive 10 minutes")
+		} else {
+			numRegUsers++
 		}
 	}
 
-	if len(s.sessions) > 0 || len(s.users) > 0 {
-		logging.Logger.Infoln("details:")
-		for skey, session := range s.sessions {
-			logging.Logger.Info("    session: ", skey)
-			for pkey, _ := range session.Participants {
-				logging.Logger.Info("       participant:", pkey)
+	logging.Logger.Info("current active sessions:", numSessions, " participants:", numParticipants, " reg users:", numRegUsers)
+
+	tickCount++
+	if tickCount % 10 == 0 {
+		if len(s.sessions) > 0 || len(s.users) > 0 {
+			logging.Logger.Infoln("details:")
+			for skey, session := range s.sessions {
+				logging.Logger.Info("    session: ", skey)
+				for pkey, _ := range session.Participants {
+					logging.Logger.Info("       participant:", pkey)
+				}
+			}
+
+			for ukey, _ := range s.users {
+				logging.Logger.Info("    reg user:", ukey)
 			}
 		}
-
-		for ukey, _ := range s.users {
-			logging.Logger.Info("    reg user:", ukey)
-		}
 	}
-
 	//utils.PrintMemUsage()
 }

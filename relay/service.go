@@ -575,7 +575,7 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 	signal := NewSignalTemp()
 	err := signal.Unmarshal(msg.Payload)
 	if err != nil {
-		logging.Logger.Warn("signal unmarshal error:", err)
+		logging.Logger.Warn("signal unmarshal error:", err, "payload:", string(msg.Payload))
 	}
 
 	//State sync和state info两个信令太多，不打在日志之中了。

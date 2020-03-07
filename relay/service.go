@@ -323,7 +323,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 			if ok {
 				participant.PendingExtra = data
 			}
-			participant.VideoQueueOut.AddItem(false, msg.Payload)
+			participant.VideoQueueOut.AddItem(false, msg.Payload, msg.From)
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
 					continue
@@ -384,7 +384,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 			if ok {
 				participant.PendingExtra = data
 			}
-			participant.VideoQueueOut.AddItem(true, msg.Payload)
+			participant.VideoQueueOut.AddItem(true, msg.Payload, msg.From)
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
 					continue
@@ -575,7 +575,7 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 	signal := NewSignalTemp()
 	err := signal.Unmarshal(msg.Payload)
 	if err != nil {
-		logging.Logger.Warn("signal unmarshal error:", err, "payload:", string(msg.Payload))
+		logging.Logger.Warn("signal unmarshal error:", err, " payload(",len(msg.Payload), "):", string(msg.Payload))
 	}
 
 	//State sync和state info两个信令太多，不打在日志之中了。

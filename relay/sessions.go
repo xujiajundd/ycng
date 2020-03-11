@@ -112,6 +112,10 @@ func (qo *QueueOut) ProcessNack(nack []byte, from int64) (seqid int16, n_tries u
 			if block_num == 0 {
 				packets = append(packets, packet.Data)
 			} else {
+				if packet.Sbn >= block_num {
+					logging.Logger.Warn("incorrect sbn in nack ", nack, " from ", from)
+					return
+				}
 				bmap := blks_map[packet.Sbn]
 				if packet.Esi < 64 {
 					if bmap&(uint64(0x01)<<packet.Esi) == 0 {

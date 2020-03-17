@@ -18,7 +18,9 @@ import (
 	"github.com/xujiajundd/ycng/utils/logging"
 	//"github.com/xujiajundd/ycng/utils"
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"reflect"
 )
 
 type Service struct {
@@ -153,8 +155,12 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 
 	case UdpMessageTypeUserSignal:
 		s.handleMessageUserSignal(msg, packet)
+
+	case UdpMessageTypeMediaControl:
+		s.handleMessageMediaControl(msg, packet)
+
 	default:
-		logging.Logger.Warn("unrecognized message type")
+		logging.Logger.Warn("unrecognized message type ", msg.MsgType, " from ", msg.From)
 	}
 }
 
@@ -230,7 +236,6 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 
 func (s *Service) handleMessageTurnUnReg(msg *Message, packet *ReceivedPacket) {
 	//客户端退出是应该发这个消息，注销在Relay上的注册
-	logging.Logger.Info("received turn unreg From ", msg.From, " for session ", msg.To)
 
 	//检查当前session是否存在, 如已不存在，无须UnReg
 	session := s.sessions[msg.To]
@@ -243,6 +248,8 @@ func (s *Service) handleMessageTurnUnReg(msg *Message, packet *ReceivedPacket) {
 	if participant == nil {
 		return
 	}
+	//客户端会重复几次发这条消息，只有必要log一次
+	logging.Logger.Info("received turn unreg From ", msg.From, " for session ", msg.To)
 	delete(session.Participants, participant.Id)
 
 	////如果剩下的参与方只有两个，也尝试发TurnInfo？
@@ -271,38 +278,75 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 			}
 			for _, p := range session.Participants {
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
-					if p.PendingMsg == nil {
-						p.PendingMsg = msg
+					//如果p要求了participant发的音频需要有repeat, 则看这个包是否属于重发范围
+					//重发范围界定：1）src包，2）src包的esi小于repeat factor.
+					repeatFactor := p.AudioRepeatFactor[participant.Id]
+					needRepeat := false
+					seqid := int16(0)
+					seqid = seqid + 1 //这是个废语句，为log中没引用的时候了不报错
+					esi := 0
+					if repeatFactor >= 0 && repeatFactor <= 5 {
+						esi = int(binary.BigEndian.Uint16(msg.Payload[9:11]))
+						seqid = int16(binary.BigEndian.Uint16(msg.Payload[0:2]))
+						if repeatFactor >= 3 {
+							if esi < repeatFactor {
+								needRepeat = true
+							}
+						} else if repeatFactor == 2 {
+							if esi == 0 || esi == 2 {
+								needRepeat = true
+							}
+						} else if repeatFactor == 1 {
+							if esi == 1 {
+								needRepeat = true
+							}
+						} else if repeatFactor == 0 {
+							//p针对participant的audio没有重发要求
+						}
 					} else {
-						p.PendingMsg.Tseq = p.Tseq
+						logging.Logger.Info("incorrect audio repeatFactor:", repeatFactor, " for ", participant.Id, " of receiver ", p.Id)
+						delete(p.AudioRepeatFactor, participant.Id) //清除为0防止无休止打日志
+					}
+					if needRepeat {
 						msg.Tseq = p.Tseq
 						p.Tseq++
-						extraAdded := false
-						if p.PendingExtra != nil && msg.Extra == nil {
-							now := time.Now()
-							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if delay < 250 {
-								p.PendingExtra.Rdelay = uint8(delay)
-								msg.Extra = p.PendingExtra.Marshal()
-								msg.SetFlag(UdpMessageFlagExtra)
-								p.PendingExtra = nil
-								extraAdded = true
-							} else {
-								p.PendingExtra = nil
-							}
-						}
-						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
 						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
-						if extraAdded {
-							msg.Extra = nil
-							msg.UnSetFlag(UdpMessageFlagExtra)
+						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						//logging.Logger.Info("repeat audio packet ", seqid, esi, " from ", participant.Id, " to ", p.Id)
+					} else {
+						if p.PendingMsg == nil {
+							p.PendingMsg = msg
+						} else {
+							p.PendingMsg.Tseq = p.Tseq
+							msg.Tseq = p.Tseq
+							p.Tseq++
+							extraAdded := false
+							if p.PendingExtra != nil && msg.Extra == nil {
+								now := time.Now()
+								delay := now.Sub(p.LastActiveTime) / time.Millisecond
+								if delay < 250 {
+									p.PendingExtra.Rdelay = uint8(delay)
+									msg.Extra = p.PendingExtra.Marshal()
+									msg.SetFlag(UdpMessageFlagExtra)
+									p.PendingExtra = nil
+									extraAdded = true
+								} else {
+									p.PendingExtra = nil
+								}
+							}
+							s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
+							s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+							if extraAdded {
+								msg.Extra = nil
+								msg.UnSetFlag(UdpMessageFlagExtra)
+							}
+							p.PendingMsg = nil
 						}
-						p.PendingMsg = nil
 					}
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To, " send audio packet")
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
@@ -331,6 +375,16 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 				if p.OnlyAcceptAudio {
 					continue
 				}
+				//如果没有列表请求数据，那么为兼容老版本，9方以下还发视频。如果已经有这个列表，则按列表规则发
+				if p.VideoList == nil {
+					if len(session.Participants) > 12 {
+						continue
+					}
+				} else {
+					if p.VideoList[participant.Id] < 1 {
+						continue
+					}
+				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
@@ -363,7 +417,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To, " send video packet")
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
@@ -392,6 +446,16 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 				if p.OnlyAcceptAudio {
 					continue
 				}
+				//如果没有列表请求数据，那么为兼容老版本，9方以下还发视频。如果已经有这个列表，则按列表规则发
+				if p.VideoList == nil {
+					if len(session.Participants) > 12 {
+						continue
+					}
+				} else {
+					if p.VideoList[participant.Id] < 1 {
+						continue
+					}
+				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
@@ -424,7 +488,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To, " send video packet")
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
@@ -448,10 +512,14 @@ func (s *Service) handleMessageVideoASkForIFrame(msg *Message, packet *ReceivedP
 				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
 					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+					//如果a向b请求i帧了，那么a的可接收视频列表里也要立即把b列进去，之后客户端会来再刷新的
+					if participant.VideoList != nil {
+						participant.VideoList[p.Id] = 2
+					}
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To, " ask iframe")
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
@@ -479,7 +547,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			//logging.Logger.Info("process nack from ", msg.From, " to sid ", msg.To, " dest ", msg.Dest, " seq ", seqid, " n_tries ", n_tries, " packets ", len(packets))
 
 			//报告给metrix汇总打日志
-             participant.Metrics.ProcessNack(msg, seqid, n_tries, len(packets))
+			participant.Metrics.ProcessNack(msg, seqid, n_tries, len(packets))
 
 			//从Dest的QueueOut中查找是否可以响应nack
 			if packets != nil && len(packets) > 0 {
@@ -516,7 +584,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 				}
 			}
 		} else {
-			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To, " send nack")
 			s.askForReTurnReg(msg, packet)
 		}
 	} else {
@@ -546,10 +614,10 @@ func (s *Service) handleMessageVideoOnlyAudio(msg *Message) {
 					participant.OnlyAcceptAudio = true
 				}
 			} else {
-				logging.Logger.Info("participant", msg.From, " incorrect audio only request")
+				logging.Logger.Info("participant ", msg.From, " incorrect audio only request")
 			}
 		} else {
-			logging.Logger.Info("participant", msg.From, " not existed in session", msg.To)
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To)
 		}
 	} else {
 		logging.Logger.Info("session ", msg.To, " not existed for audio only packet from ", msg.From)
@@ -575,7 +643,7 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 	signal := NewSignalTemp()
 	err := signal.Unmarshal(msg.Payload)
 	if err != nil {
-		logging.Logger.Warn("signal unmarshal error:", err, " payload(",len(msg.Payload), "):", string(msg.Payload))
+		logging.Logger.Warn("signal unmarshal error:", err, " payload(", len(msg.Payload), "):", string(msg.Payload), " from ", msg.From)
 	}
 
 	//State sync和state info两个信令太多，不打在日志之中了。
@@ -609,8 +677,96 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 	}
 }
 
+func (s *Service) handleMessageMediaControl(msg *Message, packet *ReceivedPacket) {
+	session := s.sessions[msg.To]
+
+	if session != nil {
+		participant := session.Participants[msg.From]
+		if participant != nil {
+			payload := msg.Payload
+			len := len(payload)
+			if len < 3 {
+				logging.Logger.Info("participant ", msg.From, " incorrect media control message ", payload)
+				return
+			}
+			p := 0
+			for p <= len-3 {
+				size := binary.BigEndian.Uint16(payload[p : p+2])
+				p += 2
+				key := payload[p]
+				p += 1
+				if p+int(size) > len {
+					logging.Logger.Info("participant ", msg.From, " incorrect media control message ", payload)
+					return
+				}
+
+				value := payload[p : p+int(size)]
+				if key == 1 { //视频请求列表uid
+					if size%8 != 0 {
+						logging.Logger.Info("participant ", msg.From, "error value size for key ", key, " for media control message ", payload)
+					}
+					num := int(size) / 8
+					uids := make(map[int64]int)
+					for i := 0; i < num; i++ {
+						uid := int64(binary.BigEndian.Uint64(value[8*i : 8*i+8]))
+						uids[uid] = 1
+					}
+
+					if !reflect.DeepEqual(uids, participant.VideoList) {
+						logging.Logger.Info(msg.From, " media control video: ", uids)
+					}
+					participant.VideoList = uids
+
+				} else if key == 2 { //主视频请求列表uid，大图，限3个以内
+					if size%8 != 0 {
+						logging.Logger.Info("participant ", msg.From, "error value size for key ", key, " for media control message ", payload)
+					}
+					num := int(size) / 8
+					uids := make(map[int64]int)
+					for i := 0; i < num; i++ {
+						uid := int64(binary.BigEndian.Uint64(value[8*i : 8*i+8]))
+						uids[uid] = 1
+					}
+
+					if !reflect.DeepEqual(uids, participant.MainVideoList) {
+						logging.Logger.Info(msg.From, " media control main video: ", uids)
+					}
+					participant.MainVideoList = uids
+
+				} else if key == 3 { //音频补偿系数，0-8，
+					if size%9 != 0 {
+						logging.Logger.Info("participant ", msg.From, "error value size for key ", key, " for media control message ", payload)
+					}
+					num := int(size) / 9
+					uids := make(map[int64]int)
+					for i := 0; i < num; i++ {
+						uid := int64(binary.BigEndian.Uint64(value[9*i : 9*i+8]))
+						factor := int(value[9*i+8])
+						uids[uid] = factor
+					}
+
+					if !reflect.DeepEqual(uids, participant.AudioRepeatFactor) {
+						logging.Logger.Info(msg.From, " media control audio repeat: ", uids)
+					}
+					participant.AudioRepeatFactor = uids
+
+				} else {
+					logging.Logger.Info("participant ", msg.From, "unknown key ", key, " for media control message ", payload)
+				}
+
+				p += int(size)
+			}
+		} else {
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To, " for media control message")
+		}
+	} else {
+		logging.Logger.Info("session ", msg.To, " not existed for media control packet from ", msg.From)
+	}
+}
+
 //清理过期的session和user
 var tickCount = 0
+
 func (s *Service) handleTicker(now time.Time) {
 	numSessions := 0
 	numParticipants := 0
@@ -644,7 +800,7 @@ func (s *Service) handleTicker(now time.Time) {
 	logging.Logger.Info("current active sessions:", numSessions, " participants:", numParticipants, " reg users:", numRegUsers)
 
 	tickCount++
-	if tickCount % 10 == 0 {
+	if tickCount%10 == 0 {
 		if len(s.sessions) > 0 || len(s.users) > 0 {
 			logging.Logger.Infoln("details:")
 			for skey, session := range s.sessions {

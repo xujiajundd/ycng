@@ -109,6 +109,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 		accTimes := int64(0)
 		totalBytes := 0
 		totalTime := 0
+		errorTid := false
 
 		for p := 0; p < m.pos; p++ {
 			u1 := m.stat[p]
@@ -129,7 +130,8 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 
 			for q := p + 1; q < p+10 && q < m.pos; q++ {
 				if u1.tid != m.stat[q].tid {
-					logging.Logger.Error("error:有不一致的tid")
+					errorTid = true
+					//logging.Logger.Error("error:有不一致的tid from ", msg.From)
 				}
 				if u1.tseq == m.stat[q].tseq {
 					if !u1.paired {
@@ -171,6 +173,9 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 			logging.Logger.Info(msg.From, " 10秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
 			m.sumPacketShould = 0
 			m.sumPacketRecv = 0
+			if errorTid {
+				logging.Logger.Error("error:有不一致的tid from ", msg.From)
+			}
 		}
 
 		if packetShould > 0 {
@@ -205,7 +210,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 
 func (m *Metrics) ProcessNack(msg *Message, seqid int16, n_tries uint8, packets_num int) {
 	m.sumNack++
-    if n_tries == 1 {
+	if n_tries == 1 {
 		m.sumNack1++
 	} else if n_tries == 2 {
 		m.sumNack2++

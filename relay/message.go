@@ -36,6 +36,7 @@ const (
 	UdpMessageTypeVideoAskForIFrame = 33 //视频请求i帧
 	UdpMessageTypeVideoOnlyIFrame   = 34 //视频只收i帧
 	UdpMessageTypeVideoOnlyAudio    = 35 //视频只收音频
+	UdpMessageTypeMediaControl      = 40 //向relay提交所需媒体信息，如需要那些人的视频流，是需要大图还是小图，是否需要音频补偿，是否只要音频不要视频，是否只要视频i帧等。
 
 	UdpMessageTypeUserReg         = 200 //注册一个客户端
 	UdpMessageTypeUserRegReceived = 201
@@ -50,7 +51,7 @@ const (
 const (
 	UdpMessageExtraTypeMetrix = 1
 
-	YCKMetrixDataTypeUp   = 2
+	YCKMetrixDataTypeUp = 2
 )
 
 type Message struct {
@@ -260,5 +261,3 @@ func (m *Message) NetTrafficSize() uint16 {
 
 	return uint16(size)
 }
-
-

@@ -275,6 +275,7 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 			ok, data := participant.Metrics.Process(msg, packet.Time)
 			if ok {
 				participant.PendingExtra = data
+				participant.PendingTime = time.Now()
 			}
 			for _, p := range session.Participants {
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
@@ -304,7 +305,7 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 							//p针对participant的audio没有重发要求
 						}
 					} else {
-						logging.Logger.Info("incorrect audio repeatFactor:", repeatFactor, " for ", participant.Id, " of receiver ", p.Id)
+						logging.Logger.Warn("incorrect audio repeatFactor:", repeatFactor, " for ", participant.Id, " of receiver ", p.Id)
 						delete(p.AudioRepeatFactor, participant.Id) //清除为0防止无休止打日志
 					}
 					if needRepeat {
@@ -323,8 +324,11 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 							extraAdded := false
 							if p.PendingExtra != nil && msg.Extra == nil {
 								now := time.Now()
-								delay := now.Sub(p.LastActiveTime) / time.Millisecond
-								if delay < 250 {
+								delay := now.Sub(p.PendingTime) / time.Millisecond
+								if delay < 750 {  //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
+									if delay > 200 {
+										delay = 200 + (delay - 200) / 10
+									}
 									p.PendingExtra.Rdelay = uint8(delay)
 									msg.Extra = p.PendingExtra.Marshal()
 									msg.SetFlag(UdpMessageFlagExtra)
@@ -614,7 +618,7 @@ func (s *Service) handleMessageVideoOnlyAudio(msg *Message) {
 					participant.OnlyAcceptAudio = true
 				}
 			} else {
-				logging.Logger.Info("participant ", msg.From, " incorrect audio only request")
+				logging.Logger.Warn("participant ", msg.From, " incorrect audio only request")
 			}
 		} else {
 			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To)

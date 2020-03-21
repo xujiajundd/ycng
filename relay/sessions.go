@@ -138,6 +138,7 @@ type Participant struct {
 	Metrics           *Metrics //针对每个participants的in/out metrics
 	PendingMsg        *Message
 	PendingExtra      *MetrixDataUp
+	PendingTime       time.Time
 	VideoQueueOut     *QueueOut
 	Tseq              int16
 	OnlyAcceptAudio   bool

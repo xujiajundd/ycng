@@ -370,6 +370,7 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 			ok, data := participant.Metrics.Process(msg, packet.Time)
 			if ok {
 				participant.PendingExtra = data
+				participant.PendingTime = time.Now()
 			}
 			participant.VideoQueueOut.AddItem(false, msg.Payload, msg.From)
 			for _, p := range session.Participants {
@@ -399,8 +400,11 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 						extraAdded := false
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
-							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if delay < 250 {
+							delay := now.Sub(p.PendingTime) / time.Millisecond
+							if delay < 750 {  //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
+								if delay > 200 {
+									delay = 200 + (delay - 200) / 10
+								}
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
 								msg.SetFlag(UdpMessageFlagExtra)
@@ -441,6 +445,7 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 			ok, data := participant.Metrics.Process(msg, packet.Time)
 			if ok {
 				participant.PendingExtra = data
+				participant.PendingTime = time.Now()
 			}
 			participant.VideoQueueOut.AddItem(true, msg.Payload, msg.From)
 			for _, p := range session.Participants {
@@ -470,8 +475,11 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 						extraAdded := false
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
-							delay := now.Sub(p.LastActiveTime) / time.Millisecond
-							if delay < 250 {
+							delay := now.Sub(p.PendingTime) / time.Millisecond
+							if delay < 750 {  //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
+								if delay > 200 {
+									delay = 200 + (delay - 200) / 10
+								}
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
 								msg.SetFlag(UdpMessageFlagExtra)

@@ -170,7 +170,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 		m.sumPacketRecv += packetRecv
 		if (currentTimestamp - m.lastLogPrint) > int64(10*time.Second) {
 			m.lastLogPrint = currentTimestamp
-			logging.Logger.Info(msg.From, " 10秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 带宽:", bandwidth, " pairs:", accPairs)
+			logging.Logger.Info(msg.From, "接收数据 10秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, "字节:", totalBytes, " 带宽:", bandwidth, " pairs:", accPairs)
 			m.sumPacketShould = 0
 			m.sumPacketRecv = 0
 			if errorTid {
@@ -222,7 +222,7 @@ func (m *Metrics) ProcessNack(msg *Message, seqid int16, n_tries uint8, packets_
 	currentTimeStamp := time.Now().UnixNano()
 	if (currentTimeStamp - m.lastNackPrint) > int64(10*time.Second) {
 		s := (currentTimeStamp - m.lastNackPrint) / int64(time.Second)
-		logging.Logger.Info(msg.From, " Nack请求", s, "秒汇总:", m.sumNack, "(", m.sumNack1, ", ", m.sumNack2, ", ", m.sumNack3, ")", " 直接回复包数：", m.sumPacketsNum)
+		logging.Logger.Info(msg.From, " Nack请求 ", s, "秒汇总:", m.sumNack, "(", m.sumNack1, ", ", m.sumNack2, ", ", m.sumNack3, ")", " 直接回复包数：", m.sumPacketsNum)
 
 		m.lastNackPrint = currentTimeStamp
 		m.sumNack = 0

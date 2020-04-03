@@ -38,6 +38,11 @@ const (
 	UdpMessageTypeVideoOnlyAudio    = 35 //视频只收音频
 	UdpMessageTypeMediaControl      = 40 //向relay提交所需媒体信息，如需要那些人的视频流，是需要大图还是小图，是否需要音频补偿，是否只要音频不要视频，是否只要视频i帧等。
 
+	UdpMessageTypeThumbVideoStream       = 50 //缩略图视频包
+	UdpMessageTypeThumbVideoStreamIFrame = 51 //缩略图视频i帧
+	UdpMessageTypeThumbVideoNack         = 52 //缩略图视频请求重发包
+	UdpMessageTypeThumbVideoAskForIFrame = 53 //缩略图视频请求i帧
+
 	UdpMessageTypeUserReg         = 200 //注册一个客户端
 	UdpMessageTypeUserRegReceived = 201
 	UdpMessageTypeUserSignal      = 202 //通过UDP来转发的信令，信令统一在push中定义

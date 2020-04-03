@@ -131,20 +131,21 @@ func (qo *QueueOut) ProcessNack(nack []byte, from int64) (seqid int16, n_tries u
 }
 
 type Participant struct {
-	Id                int64        //8 byte participant account id
-	UdpAddr           *net.UDPAddr //当前udp地址
-	TcpConn           *net.TCPConn //当前tcp连接
-	LastActiveTime    time.Time
-	Metrics           *Metrics //针对每个participants的in/out metrics
-	PendingMsg        *Message
-	PendingExtra      *MetrixDataUp
-	PendingTime       time.Time
-	VideoQueueOut     *QueueOut
-	Tseq              int16
-	OnlyAcceptAudio   bool
-	VideoList         map[int64]int //本方需要看哪些uid的视频
-	MainVideoList     map[int64]int //本方需要看哪些uid的高清视频
-	AudioRepeatFactor map[int64]int //本方需要哪些uid的音频根据级别给予src帧重发
+	Id                 int64        //8 byte participant account id
+	UdpAddr            *net.UDPAddr //当前udp地址
+	TcpConn            *net.TCPConn //当前tcp连接
+	LastActiveTime     time.Time
+	Metrics            *Metrics //针对每个participants的in/out metrics
+	PendingMsg         *Message
+	PendingExtra       *MetrixDataUp
+	PendingTime        time.Time
+	VideoQueueOut      *QueueOut
+	ThumbVideoQueueOut *QueueOut
+	Tseq               int16
+	OnlyAcceptAudio    bool
+	VideoList          map[int64]int //本方需要看哪些uid的视频
+	ThumbVideoList     map[int64]int //本方需要看哪些uid的缩略视频
+	AudioRepeatFactor  map[int64]int //本方需要哪些uid的音频根据级别给予src帧重发
 }
 
 type Session struct {

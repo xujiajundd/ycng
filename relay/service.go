@@ -37,6 +37,8 @@ type Service struct {
 	stop      chan struct{}
 	wg        sync.WaitGroup
 	ticker    *time.Ticker
+
+	acc_msg    map[uint8]int64
 }
 
 func NewService(config *Config) *Service {
@@ -48,7 +50,8 @@ func NewService(config *Config) *Service {
 		packetReceiveCh: make(chan *ReceivedPacket, 10),
 		isRunning:       false,
 		stop:            make(chan struct{}),
-		ticker:          time.NewTicker(60 * time.Second),
+		ticker:          time.NewTicker(30 * time.Second),
+		acc_msg:         make(map[uint8]int64),
 	}
 
 	service.udp_server = NewUdpServer(config, service.packetReceiveCh)
@@ -118,6 +121,8 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 		return
 	}
 
+	s.acc_msg[msg.MsgType]++
+
 	switch msg.MsgType {
 	case UdpMessageTypeNoop:
 		s.handleMessageNoop(msg, packet)
@@ -143,6 +148,18 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 		s.handleMessageVideoNack(msg, packet)
 
 	case UdpMessageTypeVideoAskForIFrame:
+		s.handleMessageVideoASkForIFrame(msg, packet)
+
+	case UdpMessageTypeThumbVideoStream:
+		s.handleMessageVideoStream(msg, packet)
+
+	case UdpMessageTypeThumbVideoStreamIFrame:
+		s.handleMessageVideoStreamIFrame(msg, packet)
+
+	case UdpMessageTypeThumbVideoNack:
+		s.handleMessageVideoNack(msg, packet)
+
+	case UdpMessageTypeThumbVideoAskForIFrame:
 		s.handleMessageVideoASkForIFrame(msg, packet)
 
 	case UdpMessageTypeVideoOnlyIFrame:
@@ -186,6 +203,7 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 		participant = &Participant{Id: msg.From, UdpAddr: packet.FromUdpAddr, TcpConn: nil}
 		participant.Metrics = NewMetrics()
 		participant.VideoQueueOut = NewQueueOut()
+		participant.ThumbVideoQueueOut = NewQueueOut()
 		participant.OnlyAcceptAudio = false
 		session.Participants[participant.Id] = participant
 	}
@@ -325,9 +343,9 @@ func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket)
 							if p.PendingExtra != nil && msg.Extra == nil {
 								now := time.Now()
 								delay := now.Sub(p.PendingTime) / time.Millisecond
-								if delay < 750 {  //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
+								if delay < 750 { //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
 									if delay > 200 {
-										delay = 200 + (delay - 200) / 10
+										delay = 200 + (delay-200)/10
 									}
 									p.PendingExtra.Rdelay = uint8(delay)
 									msg.Extra = p.PendingExtra.Marshal()
@@ -372,7 +390,14 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 				participant.PendingExtra = data
 				participant.PendingTime = time.Now()
 			}
-			participant.VideoQueueOut.AddItem(false, msg.Payload, msg.From)
+			if msg.MsgType == UdpMessageTypeVideoStream {
+				participant.VideoQueueOut.AddItem(false, msg.Payload, msg.From)
+			} else if msg.MsgType == UdpMessageTypeThumbVideoStream {
+				participant.ThumbVideoQueueOut.AddItem(false, msg.Payload, msg.From)
+			} else {
+				logging.Logger.Warn("incorrect message type for video stream")
+			}
+
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
 					continue
@@ -381,15 +406,26 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 					continue
 				}
 				//如果没有列表请求数据，那么为兼容老版本，9方以下还发视频。如果已经有这个列表，则按列表规则发
-				if p.VideoList == nil {
-					if len(session.Participants) > 12 {
-						continue
+				if msg.MsgType == UdpMessageTypeVideoStream {
+					if p.VideoList == nil {
+						if len(session.Participants) > 12 { //TODO:这个在客户端都升级后，需要改
+							continue
+						}
+					} else {
+						if p.VideoList[participant.Id] < 1 {
+							continue
+						}
 					}
-				} else {
-					if p.VideoList[participant.Id] < 1 {
+				} else if msg.MsgType == UdpMessageTypeThumbVideoStream {
+					if p.ThumbVideoList == nil {
 						continue
+					} else {
+						if p.ThumbVideoList[participant.Id] < 1 {
+							continue
+						}
 					}
 				}
+
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
 					if p.PendingMsg == nil {
 						p.PendingMsg = msg
@@ -401,9 +437,9 @@ func (s *Service) handleMessageVideoStream(msg *Message, packet *ReceivedPacket)
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
 							delay := now.Sub(p.PendingTime) / time.Millisecond
-							if delay < 750 {  //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
+							if delay < 750 { //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
 								if delay > 200 {
-									delay = 200 + (delay - 200) / 10
+									delay = 200 + (delay-200)/10
 								}
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
@@ -447,7 +483,14 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 				participant.PendingExtra = data
 				participant.PendingTime = time.Now()
 			}
-			participant.VideoQueueOut.AddItem(true, msg.Payload, msg.From)
+			if msg.MsgType == UdpMessageTypeVideoStreamIFrame {
+				participant.VideoQueueOut.AddItem(true, msg.Payload, msg.From)
+			} else if msg.MsgType == UdpMessageTypeThumbVideoStreamIFrame {
+				participant.ThumbVideoQueueOut.AddItem(true, msg.Payload, msg.From)
+			} else {
+				logging.Logger.Warn("incorrect message type for video stream iframe")
+			}
+
 			for _, p := range session.Participants {
 				if msg.Dest != 0 && p.Id != msg.Dest {
 					continue
@@ -455,14 +498,23 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 				if p.OnlyAcceptAudio {
 					continue
 				}
-				//如果没有列表请求数据，那么为兼容老版本，9方以下还发视频。如果已经有这个列表，则按列表规则发
-				if p.VideoList == nil {
-					if len(session.Participants) > 12 {
-						continue
+				if msg.MsgType == UdpMessageTypeVideoStreamIFrame {
+					if p.VideoList == nil {
+						if len(session.Participants) > 12 { //TODO:这个在客户端都升级后，需要改
+							continue
+						}
+					} else {
+						if p.VideoList[participant.Id] < 1 {
+							continue
+						}
 					}
-				} else {
-					if p.VideoList[participant.Id] < 1 {
+				} else if msg.MsgType == UdpMessageTypeThumbVideoStreamIFrame {
+					if p.ThumbVideoList == nil {
 						continue
+					} else {
+						if p.ThumbVideoList[participant.Id] < 1 {
+							continue
+						}
 					}
 				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
@@ -476,9 +528,9 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 						if p.PendingExtra != nil && msg.Extra == nil {
 							now := time.Now()
 							delay := now.Sub(p.PendingTime) / time.Millisecond
-							if delay < 750 {  //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
+							if delay < 750 { //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
 								if delay > 200 {
-									delay = 200 + (delay - 200) / 10
+									delay = 200 + (delay-200)/10
 								}
 								p.PendingExtra.Rdelay = uint8(delay)
 								msg.Extra = p.PendingExtra.Marshal()
@@ -525,8 +577,16 @@ func (s *Service) handleMessageVideoASkForIFrame(msg *Message, packet *ReceivedP
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
 					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
 					//如果a向b请求i帧了，那么a的可接收视频列表里也要立即把b列进去，之后客户端会来再刷新的
-					if participant.VideoList != nil {
-						participant.VideoList[p.Id] = 2
+					if msg.MsgType == UdpMessageTypeVideoAskForIFrame {
+						if participant.VideoList != nil {
+							participant.VideoList[p.Id] = 2
+						}
+					} else if msg.MsgType == UdpMessageTypeThumbVideoAskForIFrame{
+						if participant.ThumbVideoList != nil {
+							participant.ThumbVideoList[p.Id] = 2
+						}
+					} else {
+						logging.Logger.Warn("incorrect message type for ask for iframe")
 					}
 				}
 			}
@@ -555,7 +615,15 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			if dest == nil {
 				return
 			}
-			seqid, n_tries, isIFrame, packets := dest.VideoQueueOut.ProcessNack(nack, msg.From)
+			var queue *QueueOut
+			if msg.MsgType == UdpMessageTypeVideoNack {
+				queue = dest.VideoQueueOut
+			} else if msg.MsgType == UdpMessageTypeThumbVideoNack {
+				queue = dest.ThumbVideoQueueOut
+			} else {
+				logging.Logger.Warn("incorrect message type for video nack")
+			}
+			seqid, n_tries, isIFrame, packets := queue.ProcessNack(nack, msg.From)
 			//logging.Logger.Info("process nack from ", msg.From, " to sid ", msg.To, " dest ", msg.Dest, " seq ", seqid, " n_tries ", n_tries, " packets ", len(packets))
 
 			//报告给metrix汇总打日志
@@ -565,9 +633,17 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			if packets != nil && len(packets) > 0 {
 				for i := 0; i < len(packets); i++ {
 					packet := packets[i]
-					nmsgType := UdpMessageTypeVideoStream
-					if isIFrame {
-						nmsgType = UdpMessageTypeVideoStreamIFrame
+					var nmsgType int
+					if msg.MsgType == UdpMessageTypeVideoNack {
+						nmsgType = UdpMessageTypeVideoStream
+						if isIFrame {
+							nmsgType = UdpMessageTypeVideoStreamIFrame
+						}
+					} else {
+						nmsgType = UdpMessageTypeThumbVideoStream
+						if isIFrame {
+							nmsgType = UdpMessageTypeThumbVideoStreamIFrame
+						}
 					}
 					nmsg := NewMessage(uint8(nmsgType), msg.Dest, session.Id, msg.From, packet, nil)
 					nmsg.Tid = msg.Tid
@@ -729,7 +805,7 @@ func (s *Service) handleMessageMediaControl(msg *Message, packet *ReceivedPacket
 					}
 					participant.VideoList = uids
 
-				} else if key == 2 { //主视频请求列表uid，大图，限3个以内
+				} else if key == 2 { //缩略视频请求列表uid
 					if size%8 != 0 {
 						logging.Logger.Info("participant ", msg.From, "error value size for key ", key, " for media control message ", payload)
 					}
@@ -740,10 +816,10 @@ func (s *Service) handleMessageMediaControl(msg *Message, packet *ReceivedPacket
 						uids[uid] = 1
 					}
 
-					if !reflect.DeepEqual(uids, participant.MainVideoList) {
+					if !reflect.DeepEqual(uids, participant.ThumbVideoList) {
 						logging.Logger.Info(msg.From, " media control main video: ", uids)
 					}
-					participant.MainVideoList = uids
+					participant.ThumbVideoList = uids
 
 				} else if key == 3 { //音频补偿系数，0-8，
 					if size%9 != 0 {
@@ -785,7 +861,7 @@ func (s *Service) handleTicker(now time.Time) {
 	numRegUsers := 0
 	for skey, session := range s.sessions {
 		for pkey, participant := range session.Participants {
-			if now.Sub(participant.LastActiveTime) > 120*time.Second {
+			if now.Sub(participant.LastActiveTime) > 45*time.Second { //因为给非活跃relay客户端也会定期发小包，所以这儿超时可以缩短
 				delete(session.Participants, pkey)
 				logging.Logger.Info("delete participant ", pkey, " From session ", skey, " for inactive 120s")
 			} else {
@@ -809,10 +885,11 @@ func (s *Service) handleTicker(now time.Time) {
 		}
 	}
 
-	logging.Logger.Info("current active sessions:", numSessions, " participants:", numParticipants, " reg users:", numRegUsers)
-
 	tickCount++
-	if tickCount%10 == 0 {
+	if tickCount%2 == 0 {
+		logging.Logger.Info("<<< current active sessions:", numSessions, " participants:", numParticipants, " reg users:", numRegUsers, " >>>")
+	}
+	if tickCount%20 == 0 { //每十分钟打印一次
 		if len(s.sessions) > 0 || len(s.users) > 0 {
 			logging.Logger.Infoln("details:")
 			for skey, session := range s.sessions {
@@ -826,6 +903,23 @@ func (s *Service) handleTicker(now time.Time) {
 				logging.Logger.Info("    reg user:", ukey)
 			}
 		}
+
+		logging.Logger.Info("    messages sum:")
+		logging.Logger.Info("        sum noop:         ", s.acc_msg[UdpMessageTypeNoop])
+		logging.Logger.Info("        sum turn reg:     ", s.acc_msg[UdpMessageTypeTurnReg])
+		logging.Logger.Info("        sum turn unreg:   ", s.acc_msg[UdpMessageTypeTurnUnReg])
+		logging.Logger.Info("        sum audio:        ", s.acc_msg[UdpMessageTypeAudioStream])
+		logging.Logger.Info("        sum video:        ", s.acc_msg[UdpMessageTypeVideoStream])
+		logging.Logger.Info("        sum video iframe: ", s.acc_msg[UdpMessageTypeVideoStreamIFrame])
+		logging.Logger.Info("        sum video nack:   ", s.acc_msg[UdpMessageTypeVideoNack])
+		logging.Logger.Info("        sum video ask i:  ", s.acc_msg[UdpMessageTypeVideoAskForIFrame])
+		logging.Logger.Info("        sum thumb video:  ", s.acc_msg[UdpMessageTypeThumbVideoStream])
+		logging.Logger.Info("        sum thumb video i:", s.acc_msg[UdpMessageTypeThumbVideoStreamIFrame])
+		logging.Logger.Info("        sum thumb video n:", s.acc_msg[UdpMessageTypeThumbVideoNack])
+		logging.Logger.Info("        sum thumb video a:", s.acc_msg[UdpMessageTypeThumbVideoAskForIFrame])
+		logging.Logger.Info("        sum user reg:     ", s.acc_msg[UdpMessageTypeUserReg])
+		logging.Logger.Info("        sum user signal:  ", s.acc_msg[UdpMessageTypeUserSignal])
+		logging.Logger.Info("        sum media control:", s.acc_msg[UdpMessageTypeMediaControl])
 	}
 	//utils.PrintMemUsage()
 }

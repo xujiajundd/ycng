@@ -863,7 +863,7 @@ func (s *Service) handleTicker(now time.Time) {
 		for pkey, participant := range session.Participants {
 			if now.Sub(participant.LastActiveTime) > 45*time.Second { //因为给非活跃relay客户端也会定期发小包，所以这儿超时可以缩短
 				delete(session.Participants, pkey)
-				logging.Logger.Info("delete participant ", pkey, " From session ", skey, " for inactive 120s")
+				logging.Logger.Info("delete participant ", pkey, " From session ", skey, " for inactive 45s")
 			} else {
 				numParticipants++
 			}

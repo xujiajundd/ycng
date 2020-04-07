@@ -40,7 +40,7 @@ func init() {
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-
+    logging.SetFileRotationHooker("./log", 30)
 	if err := app.Run(os.Args); err != nil {
 		logging.Logger.Fatal(err)
 	}

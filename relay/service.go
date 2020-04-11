@@ -38,7 +38,7 @@ type Service struct {
 	wg        sync.WaitGroup
 	ticker    *time.Ticker
 
-	acc_msg    map[uint8]int64
+	acc_msg    map[uint8]int
 }
 
 func NewService(config *Config) *Service {
@@ -51,7 +51,7 @@ func NewService(config *Config) *Service {
 		isRunning:       false,
 		stop:            make(chan struct{}),
 		ticker:          time.NewTicker(30 * time.Second),
-		acc_msg:         make(map[uint8]int64),
+		acc_msg:         make(map[uint8]int),
 	}
 
 	service.udp_server = NewUdpServer(config, service.packetReceiveCh)
@@ -562,7 +562,11 @@ func (s *Service) handleMessageVideoStreamIFrame(msg *Message, packet *ReceivedP
 }
 
 func (s *Service) handleMessageVideoASkForIFrame(msg *Message, packet *ReceivedPacket) {
-	logging.Logger.Info("received ask for iframe From ", msg.From, " To ", msg.To, " Dest ", msg.Dest)
+	isThumb := ""
+	if msg.MsgType == UdpMessageTypeThumbVideoAskForIFrame {
+		isThumb = " for thumb"
+	}
+	logging.Logger.Info("received ask for iframe From ", msg.From, " To ", msg.To, " Dest ", msg.Dest, isThumb)
 
 	session := s.sessions[msg.To]
 
@@ -576,18 +580,18 @@ func (s *Service) handleMessageVideoASkForIFrame(msg *Message, packet *ReceivedP
 				}
 				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
 					s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
-					//如果a向b请求i帧了，那么a的可接收视频列表里也要立即把b列进去，之后客户端会来再刷新的
-					if msg.MsgType == UdpMessageTypeVideoAskForIFrame {
-						if participant.VideoList != nil {
-							participant.VideoList[p.Id] = 2
-						}
-					} else if msg.MsgType == UdpMessageTypeThumbVideoAskForIFrame{
-						if participant.ThumbVideoList != nil {
-							participant.ThumbVideoList[p.Id] = 2
-						}
-					} else {
-						logging.Logger.Warn("incorrect message type for ask for iframe")
-					}
+					////如果a向b请求i帧了，那么a的可接收视频列表里也要立即把b列进去，之后客户端会来再刷新的。//这个导致混乱，取消之！
+					//if msg.MsgType == UdpMessageTypeVideoAskForIFrame {
+					//	if participant.VideoList != nil {
+					//		participant.VideoList[p.Id] = 2
+					//	}
+					//} else if msg.MsgType == UdpMessageTypeThumbVideoAskForIFrame{
+					//	if participant.ThumbVideoList != nil {
+					//		participant.ThumbVideoList[p.Id] = 2
+					//	}
+					//} else {
+					//	logging.Logger.Warn("incorrect message type for ask for iframe")
+					//}
 				}
 			}
 		} else {
@@ -627,7 +631,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			//logging.Logger.Info("process nack from ", msg.From, " to sid ", msg.To, " dest ", msg.Dest, " seq ", seqid, " n_tries ", n_tries, " packets ", len(packets))
 
 			//报告给metrix汇总打日志
-			participant.Metrics.ProcessNack(msg, seqid, n_tries, len(packets))
+			participant.Metrics.ProcessNack(msg, seqid, n_tries, len(packets), msg.MsgType == UdpMessageTypeThumbVideoNack)
 
 			//从Dest的QueueOut中查找是否可以响应nack
 			if packets != nil && len(packets) > 0 {
@@ -817,7 +821,7 @@ func (s *Service) handleMessageMediaControl(msg *Message, packet *ReceivedPacket
 					}
 
 					if !reflect.DeepEqual(uids, participant.ThumbVideoList) {
-						logging.Logger.Info(msg.From, " media control main video: ", uids)
+						logging.Logger.Info(msg.From, " media control thumb video: ", uids)
 					}
 					participant.ThumbVideoList = uids
 
@@ -905,21 +909,25 @@ func (s *Service) handleTicker(now time.Time) {
 		}
 
 		logging.Logger.Info("    messages sum:")
-		logging.Logger.Info("        sum noop:         ", s.acc_msg[UdpMessageTypeNoop])
-		logging.Logger.Info("        sum turn reg:     ", s.acc_msg[UdpMessageTypeTurnReg])
-		logging.Logger.Info("        sum turn unreg:   ", s.acc_msg[UdpMessageTypeTurnUnReg])
-		logging.Logger.Info("        sum audio:        ", s.acc_msg[UdpMessageTypeAudioStream])
-		logging.Logger.Info("        sum video:        ", s.acc_msg[UdpMessageTypeVideoStream])
-		logging.Logger.Info("        sum video iframe: ", s.acc_msg[UdpMessageTypeVideoStreamIFrame])
-		logging.Logger.Info("        sum video nack:   ", s.acc_msg[UdpMessageTypeVideoNack])
-		logging.Logger.Info("        sum video ask i:  ", s.acc_msg[UdpMessageTypeVideoAskForIFrame])
-		logging.Logger.Info("        sum thumb video:  ", s.acc_msg[UdpMessageTypeThumbVideoStream])
-		logging.Logger.Info("        sum thumb video i:", s.acc_msg[UdpMessageTypeThumbVideoStreamIFrame])
-		logging.Logger.Info("        sum thumb video n:", s.acc_msg[UdpMessageTypeThumbVideoNack])
-		logging.Logger.Info("        sum thumb video a:", s.acc_msg[UdpMessageTypeThumbVideoAskForIFrame])
-		logging.Logger.Info("        sum user reg:     ", s.acc_msg[UdpMessageTypeUserReg])
-		logging.Logger.Info("        sum user signal:  ", s.acc_msg[UdpMessageTypeUserSignal])
-		logging.Logger.Info("        sum media control:", s.acc_msg[UdpMessageTypeMediaControl])
+		logging.Logger.Info("        sum noop:          ", s.acc_msg[UdpMessageTypeNoop])
+		logging.Logger.Info("        sum turn reg:      ", s.acc_msg[UdpMessageTypeTurnReg])
+		logging.Logger.Info("        sum turn unreg:    ", s.acc_msg[UdpMessageTypeTurnUnReg])
+		logging.Logger.Info("        sum audio:         ", s.acc_msg[UdpMessageTypeAudioStream])
+		logging.Logger.Info("        sum video:         ", s.acc_msg[UdpMessageTypeVideoStream])
+		logging.Logger.Info("        sum video iframe:  ", s.acc_msg[UdpMessageTypeVideoStreamIFrame])
+		logging.Logger.Info("        sum video nack:    ", s.acc_msg[UdpMessageTypeVideoNack])
+		logging.Logger.Info("        sum video ask i:   ", s.acc_msg[UdpMessageTypeVideoAskForIFrame])
+		logging.Logger.Info("        sum thumb video:   ", s.acc_msg[UdpMessageTypeThumbVideoStream])
+		logging.Logger.Info("        sum thumb video i: ", s.acc_msg[UdpMessageTypeThumbVideoStreamIFrame])
+		logging.Logger.Info("        sum thumb video n: ", s.acc_msg[UdpMessageTypeThumbVideoNack])
+		logging.Logger.Info("        sum thumb video a: ", s.acc_msg[UdpMessageTypeThumbVideoAskForIFrame])
+		logging.Logger.Info("        sum user reg:      ", s.acc_msg[UdpMessageTypeUserReg])
+		logging.Logger.Info("        sum user signal:   ", s.acc_msg[UdpMessageTypeUserSignal])
+		logging.Logger.Info("        sum media control: ", s.acc_msg[UdpMessageTypeMediaControl])
+
+		for k, _ := range s.acc_msg {
+            s.acc_msg[k] = 0
+		}
 	}
 	//utils.PrintMemUsage()
 }

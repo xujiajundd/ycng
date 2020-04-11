@@ -52,36 +52,46 @@ type UmsgStat struct {
 }
 
 type Metrics struct {
-	stat             [StatBufferSize]UmsgStat
-	pos              int
-	lastTimestamp    int64
-	lastTimestampRTT int64
-	lastLogPrint     int64
-	lastNackPrint    int64
-	sumPacketShould  int
-	sumPacketRecv    int
-	sumNack          int
-	sumNack1         int
-	sumNack2         int
-	sumNack3         int
-	sumPacketsNum    int
+	stat               [StatBufferSize]UmsgStat
+	pos                int
+	lastTimestamp      int64
+	lastTimestampRTT   int64
+	lastLogPrint       int64
+	lastNackPrint      int64
+	sumPacketShould    int
+	sumPacketRecv      int
+	sumNack            int
+	sumNack1           int
+	sumNack2           int
+	sumNack3           int
+	sumPacketsNum      int
+	sumThumbNack       int
+	sumThumbNack1      int
+	sumThumbNack2      int
+	sumThumbNack3      int
+	sumThumbPacketsNum int
 }
 
 func NewMetrics() *Metrics {
 	metrics := &Metrics{
-		stat:             [StatBufferSize]UmsgStat{},
-		pos:              0,
-		lastTimestamp:    time.Now().UnixNano(),
-		lastTimestampRTT: time.Now().UnixNano(),
-		lastLogPrint:     time.Now().UnixNano(),
-		lastNackPrint:    time.Now().UnixNano(),
-		sumPacketShould:  0,
-		sumPacketRecv:    0,
-		sumNack:          0,
-		sumNack1:         0,
-		sumNack2:         0,
-		sumNack3:         0,
-		sumPacketsNum:    0,
+		stat:               [StatBufferSize]UmsgStat{},
+		pos:                0,
+		lastTimestamp:      time.Now().UnixNano(),
+		lastTimestampRTT:   time.Now().UnixNano(),
+		lastLogPrint:       time.Now().UnixNano(),
+		lastNackPrint:      time.Now().UnixNano(),
+		sumPacketShould:    0,
+		sumPacketRecv:      0,
+		sumNack:            0,
+		sumNack1:           0,
+		sumNack2:           0,
+		sumNack3:           0,
+		sumPacketsNum:      0,
+		sumThumbNack:       0,
+		sumThumbNack1:      0,
+		sumThumbNack2:      0,
+		sumThumbNack3:      0,
+		sumThumbPacketsNum: 0,
 	}
 
 	return metrics
@@ -170,7 +180,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 		m.sumPacketRecv += packetRecv
 		if (currentTimestamp - m.lastLogPrint) > int64(10*time.Second) {
 			m.lastLogPrint = currentTimestamp
-			logging.Logger.Info(msg.From, "接收数据 10秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, "字节:", totalBytes, " 带宽:", bandwidth, " pairs:", accPairs)
+			logging.Logger.Info(msg.From, "接收数据 10秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 字节:", totalBytes, " 带宽:", bandwidth, " pairs:", accPairs)
 			m.sumPacketShould = 0
 			m.sumPacketRecv = 0
 			if errorTid {
@@ -208,21 +218,33 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 	}
 }
 
-func (m *Metrics) ProcessNack(msg *Message, seqid int16, n_tries uint8, packets_num int) {
-	m.sumNack++
-	if n_tries == 1 {
-		m.sumNack1++
-	} else if n_tries == 2 {
-		m.sumNack2++
-	} else if n_tries == 3 {
-		m.sumNack3++
+func (m *Metrics) ProcessNack(msg *Message, seqid int16, n_tries uint8, packets_num int, isThumb bool) {
+	if isThumb {
+		m.sumThumbNack++
+		if n_tries == 1 {
+			m.sumThumbNack1++
+		} else if n_tries == 2 {
+			m.sumThumbNack2++
+		} else if n_tries == 3 {
+			m.sumThumbNack3++
+		}
+		m.sumThumbPacketsNum += packets_num
+	} else {
+		m.sumNack++
+		if n_tries == 1 {
+			m.sumNack1++
+		} else if n_tries == 2 {
+			m.sumNack2++
+		} else if n_tries == 3 {
+			m.sumNack3++
+		}
+		m.sumPacketsNum += packets_num
 	}
-	m.sumPacketsNum += packets_num
 
 	currentTimeStamp := time.Now().UnixNano()
 	if (currentTimeStamp - m.lastNackPrint) > int64(10*time.Second) {
 		s := (currentTimeStamp - m.lastNackPrint) / int64(time.Second)
-		logging.Logger.Info(msg.From, " Nack请求 ", s, "秒汇总:", m.sumNack, "(", m.sumNack1, ", ", m.sumNack2, ", ", m.sumNack3, ")", " 直接回复包数：", m.sumPacketsNum)
+		logging.Logger.Info(msg.From, " Nack请求 ", s, "秒汇总:", m.sumNack, "(", m.sumNack1, ", ", m.sumNack2, ", ", m.sumNack3, ")", " 直接回复包数:", m.sumPacketsNum, "    Thumb:", m.sumThumbNack, "(", m.sumThumbNack1, ", ", m.sumThumbNack2, ", ", m.sumThumbNack3, ")", " 直接回复包数:", m.sumThumbPacketsNum)
 
 		m.lastNackPrint = currentTimeStamp
 		m.sumNack = 0
@@ -230,5 +252,10 @@ func (m *Metrics) ProcessNack(msg *Message, seqid int16, n_tries uint8, packets_
 		m.sumNack2 = 0
 		m.sumNack3 = 0
 		m.sumPacketsNum = 0
+		m.sumThumbNack = 0
+		m.sumThumbNack1 = 0
+		m.sumThumbNack2 = 0
+		m.sumThumbNack3 = 0
+		m.sumThumbPacketsNum = 0
 	}
 }

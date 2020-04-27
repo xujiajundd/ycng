@@ -15,6 +15,7 @@ import (
 	"github.com/urfave/cli"
 	"github.com/xujiajundd/ycng/utils/logging"
 	"github.com/xujiajundd/ycng/relay"
+	"io/ioutil"
 )
 
 var app = cli.NewApp()
@@ -40,6 +41,7 @@ func init() {
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
+	logging.Logger.Out = ioutil.Discard //把日志只写到文件，然后stderr到nohup.out
     logging.SetFileRotationHooker("./log", 30)
 	if err := app.Run(os.Args); err != nil {
 		logging.Logger.Fatal(err)

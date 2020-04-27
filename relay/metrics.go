@@ -156,6 +156,7 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 						if !m.stat[q].paired {
 							m.stat[q].paired = true
 							packetDup++
+							break
 						}
 					}
 				}

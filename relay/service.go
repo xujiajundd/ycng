@@ -278,6 +278,10 @@ func (s *Service) handleMessageTurnUnReg(msg *Message, packet *ReceivedPacket) {
 
 func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket) {
 	//logging.Logger.Info("received audio From ", msg.From, " To ", msg.To)
+    if len(msg.Payload) < 12 {
+    	    logging.Logger.Error("error audio packet from:", msg.From, " to:", msg.To, " payload:", msg.Payload)
+    	    return
+	}
 
 	session := s.sessions[msg.To]
 	if session != nil {

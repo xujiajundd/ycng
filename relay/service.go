@@ -38,7 +38,7 @@ type Service struct {
 	wg        sync.WaitGroup
 	ticker    *time.Ticker
 
-	acc_msg    map[uint8]int
+	acc_msg map[uint8]int
 }
 
 func NewService(config *Config) *Service {
@@ -278,9 +278,9 @@ func (s *Service) handleMessageTurnUnReg(msg *Message, packet *ReceivedPacket) {
 
 func (s *Service) handleMessageAudioStream(msg *Message, packet *ReceivedPacket) {
 	//logging.Logger.Info("received audio From ", msg.From, " To ", msg.To)
-    if len(msg.Payload) < 12 {
-    	    logging.Logger.Error("error audio packet from:", msg.From, " to:", msg.To, " payload:", msg.Payload)
-    	    return
+	if len(msg.Payload) < 12 {
+		logging.Logger.Error("error audio packet from:", msg.From, " to:", msg.To, " payload:", msg.Payload)
+		return
 	}
 
 	session := s.sessions[msg.To]
@@ -737,14 +737,17 @@ func (s *Service) handleMessageUserReg(msg *Message, packet *ReceivedPacket) {
 
 func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) {
 	signal := NewSignalTemp()
-	err := signal.Unmarshal(msg.Payload)
-	if err != nil {
-		logging.Logger.Warn("signal unmarshal error:", err, " payload(", len(msg.Payload), "):", string(msg.Payload), " from ", msg.From)
-	}
 
-	//State sync和state info两个信令太多，不打在日志之中了。
-	if signal.Signal != YCKCallSignalTypeStateSync && signal.Signal != YCKCallSignalTypeStateInfo {
-		logging.Logger.Info("received user signal From ", msg.From, "<", packet.FromUdpAddr.String(), ">", " To ", msg.To)
+	if !msg.HasFlag(UdpMessageFlagGZip) {
+		err := signal.Unmarshal(msg.Payload)
+		if err != nil {
+			logging.Logger.Warn("signal unmarshal error:", err, " payload(", len(msg.Payload), "):", string(msg.Payload), " from ", msg.From)
+		}
+
+		//State sync和state info两个信令太多，不打在日志之中了。
+		if signal.Signal != YCKCallSignalTypeStateSync && signal.Signal != YCKCallSignalTypeStateInfo {
+			logging.Logger.Info("received user signal From ", msg.From, "<", packet.FromUdpAddr.String(), ">", " To ", msg.To)
+		}
 	}
 
 	user := s.users[msg.From]
@@ -764,9 +767,10 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 
 	if user != nil {
 		s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), user.UdpAddr)
-
-		if signal.Signal != YCKCallSignalTypeStateSync && signal.Signal != YCKCallSignalTypeStateInfo {
-			logging.Logger.Info("route user signal", signal.String(), " From ", msg.From, " To ", msg.To, "<", user.UdpAddr.String(), ">")
+		if !msg.HasFlag(UdpMessageFlagGZip) {
+			if signal.Signal != YCKCallSignalTypeStateSync && signal.Signal != YCKCallSignalTypeStateInfo {
+				logging.Logger.Info("route user signal", signal.String(), " From ", msg.From, " To ", msg.To, "<", user.UdpAddr.String(), ">")
+			}
 		}
 	} else {
 		logging.Logger.Warn("user ", msg.To, " not existed in signal msg.to")
@@ -930,7 +934,7 @@ func (s *Service) handleTicker(now time.Time) {
 		logging.Logger.Info("        sum media control: ", s.acc_msg[UdpMessageTypeMediaControl])
 
 		for k, _ := range s.acc_msg {
-            s.acc_msg[k] = 0
+			s.acc_msg[k] = 0
 		}
 	}
 	//utils.PrintMemUsage()

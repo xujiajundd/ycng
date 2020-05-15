@@ -51,6 +51,7 @@ const (
 const (
 	UdpMessageFlagExtra = 1 << 0
 	UdpMessageFlagDest  = 1 << 1
+	UdpMessageFlagGZip  = 1 << 2
 )
 
 const (

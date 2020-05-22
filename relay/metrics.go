@@ -60,6 +60,11 @@ type Metrics struct {
 	lastNackPrint      int64
 	sumPacketShould    int
 	sumPacketRecv      int
+	sumPacketAudio     int
+	sumPacketVideo     int
+	sumPacketVideoI    int
+	sumPacketThumb     int
+	sumPacketThumbI    int
 	sumNack            int
 	sumNack1           int
 	sumNack2           int
@@ -82,6 +87,11 @@ func NewMetrics() *Metrics {
 		lastNackPrint:      time.Now().UnixNano(),
 		sumPacketShould:    0,
 		sumPacketRecv:      0,
+		sumPacketAudio:     0,
+		sumPacketVideo:     0,
+		sumPacketVideoI:    0,
+		sumPacketThumb:     0,
+		sumPacketThumbI:    0,
 		sumNack:            0,
 		sumNack1:           0,
 		sumNack2:           0,
@@ -107,6 +117,19 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 	m.stat[m.pos].bytes = msg.NetTrafficSize()
 	currentTimestamp := timestamp
 	m.stat[m.pos].timestamp = currentTimestamp
+
+	switch msg.MsgType {
+	case UdpMessageTypeAudioStream:
+		m.sumPacketAudio++
+	case UdpMessageTypeVideoStream:
+		m.sumPacketVideo++
+	case UdpMessageTypeVideoStreamIFrame:
+		m.sumPacketVideoI++
+	case UdpMessageTypeThumbVideoStream:
+		m.sumPacketThumb++
+	case UdpMessageTypeThumbVideoStreamIFrame:
+		m.sumPacketThumbI++
+	}
 
 	m.pos++
 	if m.pos >= StatBufferSize || (currentTimestamp-m.lastTimestamp) > int64(250*time.Millisecond) && m.pos > 30 {
@@ -181,9 +204,14 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 		m.sumPacketRecv += packetRecv
 		if (currentTimestamp - m.lastLogPrint) > int64(10*time.Second) {
 			m.lastLogPrint = currentTimestamp
-			logging.Logger.Info(msg.From, "接收数据 10秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 字节:", totalBytes, " 带宽:", bandwidth, " pairs:", accPairs)
+			logging.Logger.Info(msg.From, "接收数据 10秒汇总（应收:", m.sumPacketShould, " 实收:", m.sumPacketRecv, "(", m.sumPacketAudio, ",", m.sumPacketVideoI, ",", m.sumPacketVideo, ",", m.sumPacketThumbI, ",", m.sumPacketThumb, ")", ") 本次应收包:", packetShould, " 实收包:", packetRecv, " 重复:", packetDup, " 字节:", totalBytes, " 带宽:", bandwidth, " pairs:", accPairs)
 			m.sumPacketShould = 0
 			m.sumPacketRecv = 0
+			m.sumPacketAudio = 0
+			m.sumPacketVideoI = 0
+			m.sumPacketVideo = 0
+			m.sumPacketThumbI = 0
+			m.sumPacketThumb = 0
 			if errorTid {
 				logging.Logger.Error("error:有不一致的tid from ", msg.From)
 			}

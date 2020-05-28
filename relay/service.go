@@ -906,13 +906,13 @@ func (s *Service) handleTicker(now time.Time) {
 			logging.Logger.Infoln("details:")
 			for skey, session := range s.sessions {
 				logging.Logger.Info("    session: ", skey)
-				for pkey, _ := range session.Participants {
-					logging.Logger.Info("       participant:", pkey)
+				for pkey, p := range session.Participants {
+					logging.Logger.Info("       participant:", pkey, "<", p.UdpAddr.String() ,">")
 				}
 			}
 
-			for ukey, _ := range s.users {
-				logging.Logger.Info("    reg user:", ukey)
+			for ukey, u := range s.users {
+				logging.Logger.Info("    reg user:", ukey, "<", u.UdpAddr.String(), ">")
 			}
 		}
 

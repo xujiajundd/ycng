@@ -760,7 +760,11 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 			}
 		}
 	} else {
-		logging.Logger.Warn("user ", msg.From, " not existed in signal msg.from")
+		logging.Logger.Warn("user ", msg.From, " not existed in signal msg.from， register the user ", "<", packet.FromUdpAddr.String(), ">",)
+		user = NewUser(msg.From)
+		s.users[msg.From] = user
+		user.UdpAddr = packet.FromUdpAddr
+		user.LastActiveTime = time.Now()
 	}
 
 	user = s.users[msg.To]
@@ -773,7 +777,7 @@ func (s *Service) handleMessageUserSignal(msg *Message, packet *ReceivedPacket) 
 			}
 		}
 	} else {
-		logging.Logger.Warn("user ", msg.To, " not existed in signal msg.to")
+		logging.Logger.Warn("user ", msg.To, " not existed in signal msg.to", signal.String())
 	}
 }
 

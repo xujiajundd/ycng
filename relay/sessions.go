@@ -141,6 +141,7 @@ type Participant struct {
 	PendingTime        time.Time
 	VideoQueueOut      *QueueOut
 	ThumbVideoQueueOut *QueueOut
+	DataQueueOut       *QueueOut
 	Tseq               int16
 	OnlyAcceptAudio    bool
 	VideoList          map[int64]int //本方需要看哪些uid的视频

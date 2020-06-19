@@ -43,6 +43,9 @@ const (
 	UdpMessageTypeThumbVideoNack         = 52 //缩略图视频请求重发包
 	UdpMessageTypeThumbVideoAskForIFrame = 53 //缩略图视频请求i帧
 
+	UdpMessageTypeData              = 60
+	UdpMessageTypeDataNack          = 61
+
 	UdpMessageTypeUserReg         = 200 //注册一个客户端
 	UdpMessageTypeUserRegReceived = 201
 	UdpMessageTypeUserSignal      = 202 //通过UDP来转发的信令，信令统一在push中定义

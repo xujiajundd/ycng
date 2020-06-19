@@ -162,6 +162,12 @@ func (s *Service) handlePacket(packet *ReceivedPacket) {
 	case UdpMessageTypeThumbVideoAskForIFrame:
 		s.handleMessageVideoASkForIFrame(msg, packet)
 
+	case UdpMessageTypeData:
+		s.handleMessageData(msg, packet)
+
+	case UdpMessageTypeDataNack:
+		s.handleMessageDataNack(msg, packet)
+
 	case UdpMessageTypeVideoOnlyIFrame:
 
 	case UdpMessageTypeVideoOnlyAudio:
@@ -204,6 +210,7 @@ func (s *Service) handleMessageTurnReg(msg *Message, packet *ReceivedPacket) {
 		participant.Metrics = NewMetrics()
 		participant.VideoQueueOut = NewQueueOut()
 		participant.ThumbVideoQueueOut = NewQueueOut()
+		participant.DataQueueOut = NewQueueOut()
 		participant.OnlyAcceptAudio = false
 		session.Participants[participant.Id] = participant
 	}
@@ -635,7 +642,7 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 			//logging.Logger.Info("process nack from ", msg.From, " to sid ", msg.To, " dest ", msg.Dest, " seq ", seqid, " n_tries ", n_tries, " packets ", len(packets))
 
 			//报告给metrix汇总打日志
-			participant.Metrics.ProcessNack(msg, seqid, n_tries, len(packets), msg.MsgType == UdpMessageTypeThumbVideoNack)
+			participant.Metrics.ProcessNack(msg, seqid, n_tries, len(packets))
 
 			//从Dest的QueueOut中查找是否可以响应nack
 			if packets != nil && len(packets) > 0 {
@@ -685,6 +692,153 @@ func (s *Service) handleMessageVideoNack(msg *Message, packet *ReceivedPacket) {
 		}
 	} else {
 		logging.Logger.Info("session ", msg.To, " not existed for nack packet from ", msg.From)
+		s.askForReTurnReg(msg, packet)
+	}
+}
+
+func (s *Service) handleMessageData(msg *Message, packet *ReceivedPacket) {
+	//logging.Logger.Info("received data From ", msg.From, " To ", msg.To)
+
+	session := s.sessions[msg.To]
+	if session != nil {
+		participant := session.Participants[msg.From]
+		if participant != nil {
+			participant.LastActiveTime = time.Now()
+			ok, data := participant.Metrics.Process(msg, packet.Time)
+			if ok {
+				participant.PendingExtra = data
+				participant.PendingTime = time.Now()
+			}
+
+			participant.DataQueueOut.AddItem(false, msg.Payload, msg.From)
+
+			for _, p := range session.Participants {
+				if msg.Dest != 0 && p.Id != msg.Dest {
+					continue
+				}
+
+				////Data要不要做media control，还未定，先不做，缺省全部转发
+				//if msg.MsgType == UdpMessageTypeVideoStream {
+				//	if p.VideoList == nil {
+				//		if len(session.Participants) > 12 {
+				//			continue
+				//		}
+				//	} else {
+				//		if p.VideoList[participant.Id] < 1 {
+				//			continue
+				//		}
+				//	}
+				//} else if msg.MsgType == UdpMessageTypeThumbVideoStream {
+				//	if p.ThumbVideoList == nil {
+				//		continue
+				//	} else {
+				//		if p.ThumbVideoList[participant.Id] < 1 {
+				//			continue
+				//		}
+				//	}
+				//}
+
+				if p.Id != msg.From || (p.Id == 0 && msg.From == 0) { //后一个条件是为了本地回环测试，非登录用户的id为0
+					if p.PendingMsg == nil {
+						p.PendingMsg = msg
+					} else {
+						p.PendingMsg.Tseq = p.Tseq
+						msg.Tseq = p.Tseq
+						p.Tseq++
+						extraAdded := false
+						if p.PendingExtra != nil && msg.Extra == nil {
+							now := time.Now()
+							delay := now.Sub(p.PendingTime) / time.Millisecond
+							if delay < 750 { //这个地方原来协议只留了一个字节，不够用，所以用这种方法放大一点点。
+								if delay > 200 {
+									delay = 200 + (delay-200)/10
+								}
+								p.PendingExtra.Rdelay = uint8(delay)
+								msg.Extra = p.PendingExtra.Marshal()
+								msg.SetFlag(UdpMessageFlagExtra)
+								p.PendingExtra = nil
+								extraAdded = true
+							} else {
+								p.PendingExtra = nil
+							}
+						}
+						s.udp_server.SendPacket(p.PendingMsg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+						if extraAdded {
+							msg.Extra = nil
+							msg.UnSetFlag(UdpMessageFlagExtra)
+						}
+						p.PendingMsg = nil
+					}
+				}
+			}
+		} else {
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To, " send data packet")
+			s.askForReTurnReg(msg, packet)
+		}
+	} else {
+		logging.Logger.Info("session ", msg.To, " not existed for data packet from ", msg.From)
+		s.askForReTurnReg(msg, packet)
+	}
+}
+
+func (s *Service) handleMessageDataNack(msg *Message, packet *ReceivedPacket) {
+	//logging.Logger.Info("received data nack From ", msg.From, " To ", msg.To, " Dest ", msg.Dest)
+
+	session := s.sessions[msg.To]
+
+	if session != nil {
+		participant := session.Participants[msg.From]
+		if participant != nil {
+			nack := msg.Payload
+			dest := session.Participants[msg.Dest]
+			if dest == nil {
+				return
+			}
+			queue := dest.DataQueueOut
+
+			seqid, n_tries, _, packets := queue.ProcessNack(nack, msg.From)
+			//logging.Logger.Info("process nack from ", msg.From, " to sid ", msg.To, " dest ", msg.Dest, " seq ", seqid, " n_tries ", n_tries, " packets ", len(packets))
+
+			//报告给metrix汇总打日志
+			participant.Metrics.ProcessNack(msg, seqid, n_tries, len(packets))
+
+			//从Dest的QueueOut中查找是否可以响应nack
+			if packets != nil && len(packets) > 0 {
+				for i := 0; i < len(packets); i++ {
+					packet := packets[i]
+					nmsg := NewMessage(UdpMessageTypeDataNack, msg.Dest, session.Id, msg.From, packet, nil)
+					nmsg.Tid = msg.Tid
+					if participant.PendingMsg == nil {
+						participant.PendingMsg = nmsg
+					} else {
+						participant.PendingMsg.Tseq = participant.Tseq
+						nmsg.Tseq = participant.Tseq
+						participant.Tseq++
+						s.udp_server.SendPacket(participant.PendingMsg.ObfuscatedDataOfMessage(), participant.UdpAddr)
+						s.udp_server.SendPacket(nmsg.ObfuscatedDataOfMessage(), participant.UdpAddr)
+						participant.PendingMsg = nil
+					}
+				}
+			}
+
+			//如果是tries>0且QueueOut中无响应，则发给Dest处理
+			if n_tries > 1 && len(packets) == 0 {
+				for _, p := range session.Participants {
+					if msg.Dest != 0 && p.Id != msg.Dest {
+						continue
+					}
+					if p.Id != msg.From || (p.Id == 0 && msg.From == 0) {
+						s.udp_server.SendPacket(msg.ObfuscatedDataOfMessage(), p.UdpAddr)
+					}
+				}
+			}
+		} else {
+			logging.Logger.Info("participant ", msg.From, " not existed in session ", msg.To, " send data nack")
+			s.askForReTurnReg(msg, packet)
+		}
+	} else {
+		logging.Logger.Info("session ", msg.To, " not existed for data nack packet from ", msg.From)
 		s.askForReTurnReg(msg, packet)
 	}
 }

@@ -807,7 +807,7 @@ func (s *Service) handleMessageDataNack(msg *Message, packet *ReceivedPacket) {
 			if packets != nil && len(packets) > 0 {
 				for i := 0; i < len(packets); i++ {
 					packet := packets[i]
-					nmsg := NewMessage(UdpMessageTypeDataNack, msg.Dest, session.Id, msg.From, packet, nil)
+					nmsg := NewMessage(UdpMessageTypeData, msg.Dest, session.Id, msg.From, packet, nil)
 					nmsg.Tid = msg.Tid
 					if participant.PendingMsg == nil {
 						participant.PendingMsg = nmsg

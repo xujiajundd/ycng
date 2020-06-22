@@ -66,6 +66,7 @@ func NewQueueOut() *QueueOut {
 func (qo *QueueOut) AddItem(isIFrame bool, payload []byte, from int64) {
 	if len(payload) < 11 {
 		logging.Logger.Warn("incorrect video packet payload size:", len(payload), " from ", from)
+		return
 	}
 
 	packet := &OutPacket{

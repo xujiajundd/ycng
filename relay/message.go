@@ -46,6 +46,8 @@ const (
 
 	UdpMessageTypeData              = 60
 	UdpMessageTypeDataNack          = 61
+	UdpMessageTypeUnicastData       = 62
+	UdpMessageTypeUnicastDataNack   = 63
 
 	UdpMessageTypeUserReg         = 200 //注册一个客户端
 	UdpMessageTypeUserRegReceived = 201
@@ -183,7 +185,7 @@ func (m *Message) Unmarshal(data []byte) error {
 		//copy(m.Payload, data[p : p+int(payloadLen)])
 		p += int(payloadLen)
 	} else {
-		logging.Logger.Warn("Message Unmarshal error from ", m.From, " type", m.MsgType, " len ", len, " payloadLen ", payloadLen, "for data ", data)
+		logging.Logger.Warn("Message Unmarshal error from ", m.From, " type ", m.MsgType, " len ", len, " payloadLen ", payloadLen, " for data ", data)
 		return errors.New("incorrect packet len for Payload from ")
 	}
 
@@ -197,7 +199,7 @@ func (m *Message) Unmarshal(data []byte) error {
 			m.Extra = data[p : p+int(extraLen)]
 			p += int(extraLen)
 		} else {
-			logging.Logger.Warn("Message Unmarshal error from ", m.From, " type", m.MsgType, " len ", len, " extraLen ", extraLen, "for data ", data)
+			logging.Logger.Warn("Message Unmarshal error from ", m.From, " type", m.MsgType, " len ", len, " extraLen ", extraLen, " for data ", data)
 			return errors.New("incorrect packet len for Extra")
 		}
 	}

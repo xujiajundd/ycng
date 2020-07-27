@@ -143,6 +143,8 @@ func (m *Metrics) Process(msg *Message, timestamp int64) (ok bool, data *MetrixD
 		m.sumPacketThumbI++
 	case UdpMessageTypeData:
 		m.sumPacketData++
+	case UdpMessageTypeUnicastData:
+		m.sumPacketData++
 	}
 
 	m.pos++
